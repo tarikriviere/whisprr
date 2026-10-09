@@ -10,7 +10,20 @@ Index funds publish their reconstitution rules and rebalance at a time everyone 
 
 There's no ZK here. A hash commitment is the right primitive: the methodology only needs to stay secret until it's executed, not forever.
 
-> Work in progress: see `docs/` and the commit history for build progress.
+The public framework (universe, methodology class, timing rules) lives in [`docs/FRAMEWORK.md`](docs/FRAMEWORK.md). Its hash is stored in the vault at deployment.
+
+## Contracts
+
+| Contract | Role |
+|---|---|
+| `WhisperVault` | Holds the constituents; commit → draw → execute+reveal lifecycle |
+| `OracleVenue` | Inventory-backed venue filling swaps at quoted USD prices (testnet stand-in for an RWA market) |
+| `MockRWA` | ERC-20 stand-ins: mUSDC (cash), mTBILL, mXAU, mSPY |
+
+## Known limitations (in progress)
+
+- **Randomness.** The execution time is drawn from a future block hash. If nobody draws within 256 blocks, the draw re-arms to a fresh block, which gives a withholding operator a reroll. Chainlink CRE is planned to replace this.
+- **Prices** are set by the venue owner. Pyth feeds are planned.
 
 ## Build
 
@@ -25,7 +38,14 @@ forge test -vv
 cp .env.example .env   # fill PRIVATE_KEY
 source .env
 forge script script/Deploy.s.sol --rpc-url $MONAD_TESTNET_RPC --broadcast
+
+# one rebalance epoch
+forge script script/Rebalance.s.sol --sig "commit()"  --rpc-url $MONAD_TESTNET_RPC --broadcast  # seals target weights
+forge script script/Rebalance.s.sol --sig "draw()"    --rpc-url $MONAD_TESTNET_RPC --broadcast  # after ~5 blocks
+forge script script/Rebalance.s.sol --sig "execute()" --rpc-url $MONAD_TESTNET_RPC --broadcast  # once executeAt passes
 ```
+
+`commit()` keeps the preimage in `sealed/` (gitignored) and broadcasts only the hash. Target weights default to `1000,4000,2000,3000` bps; override them with `WEIGHTS=...`.
 
 ## AI tools disclosure
 
