@@ -20,6 +20,24 @@ The public framework (universe, methodology class, timing rules) lives in [`docs
 | `OracleVenue` | Inventory-backed venue filling swaps at quoted USD prices (testnet stand-in for an RWA market) |
 | `MockRWA` | ERC-20 stand-ins: mUSDC (cash), mTBILL, mXAU, mSPY |
 
+## Frontend
+
+`frontend/` is a Vite + React app using **Dynamic** for wallets (email/social embedded wallets or any EVM wallet) and wagmi/viem for chain access. It does more than log users in:
+
+- **Public view**: holdings and live weights, the current epoch's sealed commitment, and the execution window as a timeline showing the nominal date, the randomly drawn time and now.
+- **Anyone signed in** can draw the execution time once the draw block is mined, and can flag an operator that misses the grace period as defaulted.
+- **Operator console**, shown only when the connected Dynamic wallet is the vault's `operator`: set target weights, preview the trade list, then seal and commit. The salt is generated and the commitment hashed in the browser. The preimage is kept locally and downloaded as a backup, and it's used to reveal and execute when the drawn time arrives.
+- **Verify**: every executed epoch's `Executed` event is fetched and re-hashed in the browser, then compared with the commitment that was posted before anyone knew the weights.
+
+```bash
+cd frontend
+cp .env.example .env   # set VITE_DYNAMIC_ENV_ID
+npm install
+npm run dev            # needs `forge build` and a deployments/<chainid>.json first
+```
+
+Set `VITE_CHAIN=local` to point the app at anvil on `:8545`.
+
 ## Known limitations (in progress)
 
 - **Randomness.** The execution time is drawn from a future block hash. If nobody draws within 256 blocks, the draw re-arms to a fresh block, which gives a withholding operator a reroll. Chainlink CRE is planned to replace this.
@@ -51,7 +69,7 @@ forge script script/Rebalance.s.sol --sig "execute()" --rpc-url $MONAD_TESTNET_R
 
 This project was built with AI coding assistance, as required by the hackathon rules:
 
-- **Claude Code** (Anthropic CLI agent, model: Claude Opus 5.5): scaffolding, Solidity contracts, tests, deploy scripts and documentation, under the author's direction and review.
+- **Claude Code** (Anthropic CLI agent, model: Claude Opus 5.5): scaffolding, Solidity contracts, tests, deploy scripts, the React/Dynamic frontend and documentation, under the author's direction and review.
 - **Claude** (claude.ai): design discussion and the build plan.
 
 All code was written during the hackathon window.

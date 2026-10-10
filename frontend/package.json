@@ -1,0 +1,29 @@
+{
+  "name": "whisper-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "abi": "node scripts/export-abi.mjs",
+    "dev": "npm run abi && vite",
+    "build": "npm run abi && tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@dynamic-labs/ethereum": "^5.10.0",
+    "@dynamic-labs/sdk-react-core": "^5.10.0",
+    "@dynamic-labs/wagmi-connector": "^5.10.0",
+    "@tanstack/react-query": "^5.104.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "viem": "^2.57.4",
+    "wagmi": "^2.19.5"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.4"
+  }
+}
