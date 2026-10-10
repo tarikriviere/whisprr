@@ -100,9 +100,10 @@ contract WhisperVaultTest is Test {
         assertApproxEqAbs(cw[1], 4_000, 1);
         assertApproxEqAbs(cw[2], 2_000, 1);
         assertApproxEqAbs(cw[3], 3_000, 1);
-        (,,,,,, uint64 executedAt, WhisperVault.Status s) = vault.epochs(1);
+        (,,,,,, uint64 executedAt, uint64 executedBlock, WhisperVault.Status s) = vault.epochs(1);
         assertEq(uint8(s), uint8(WhisperVault.Status.Executed));
         assertEq(executedAt, executeAt);
+        assertEq(executedBlock, block.number);
     }
 
     function test_nextEpochAfterExecution() public {
@@ -146,7 +147,7 @@ contract WhisperVaultTest is Test {
         _commit();
         vm.roll(block.number + 1_000);
         assertEq(vault.drawExecutionTime(), 0);
-        (,, uint64 drawBlock,,,,, WhisperVault.Status s) = vault.epochs(1);
+        (,, uint64 drawBlock,,,,,, WhisperVault.Status s) = vault.epochs(1);
         assertEq(drawBlock, block.number + vault.DRAW_DELAY());
         assertEq(uint8(s), uint8(WhisperVault.Status.Committed));
     }
@@ -181,7 +182,7 @@ contract WhisperVaultTest is Test {
 
         vm.prank(anyone);
         vault.markDefaulted();
-        (,,,,,,, WhisperVault.Status s) = vault.epochs(1);
+        (,,,,,,,, WhisperVault.Status s) = vault.epochs(1);
         assertEq(uint8(s), uint8(WhisperVault.Status.Defaulted));
     }
 

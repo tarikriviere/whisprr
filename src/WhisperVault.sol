@@ -55,6 +55,7 @@ contract WhisperVault is ReentrancyGuard {
         uint64 windowEnd;
         uint64 executeAt;
         uint64 executedAt;
+        uint64 executedBlock; // lets indexers fetch the Executed event (the reveal) without a log scan
         Status status;
     }
 
@@ -214,6 +215,7 @@ contract WhisperVault is ReentrancyGuard {
             windowEnd: nominalTime + jitterAfter,
             executeAt: 0,
             executedAt: 0,
+            executedBlock: 0,
             status: Status.Committed
         });
         emit Committed(epoch, commitment, windowStart, nominalTime + jitterAfter, drawBlock);
@@ -285,6 +287,7 @@ contract WhisperVault is ReentrancyGuard {
 
         e.status = Status.Executed;
         e.executedAt = uint64(block.timestamp);
+        e.executedBlock = uint64(block.number);
         emit Executed(epoch, e.commitment, weights, trades, salt);
     }
 
