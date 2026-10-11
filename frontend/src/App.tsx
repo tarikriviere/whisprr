@@ -60,6 +60,7 @@ export function App() {
                 <dt>Jitter window</dt><dd className="mono">−{s.jitterBefore.toString()}s / +{s.jitterAfter.toString()}s</dd>
                 <dt>Execution grace</dt><dd className="mono">{s.grace.toString()}s</dd>
                 <dt>Weight tolerance</dt><dd className="mono">{s.tolerance} bps</dd>
+                <dt>Timing randomness</dt><dd>{/^0x0+$/.test(s.drawForwarder) ? "block hash" : <>Chainlink CRE via <Addr a={s.drawForwarder} /></>}</dd>
               </dl>
             </section>
           </div>

@@ -16,6 +16,12 @@ contract Deploy is Script {
         uint64 jitterBefore = uint64(vm.envOr("JITTER_BEFORE", uint256(60)));
         uint64 jitterAfter = uint64(vm.envOr("JITTER_AFTER", uint256(120)));
         uint64 grace = uint64(vm.envOr("GRACE", uint256(600)));
+        // Chainlink forwarder trusted for CRE draws. Defaults to Monad testnet's simulation forwarder,
+        // which `cre workflow simulate --broadcast` writes through; use the KeystoneForwarder
+        // (0xF8344CFd5c43616a4366C34E3EEE75af79a74482) for a deployed workflow.
+        address drawForwarder = vm.envOr(
+            "DRAW_FORWARDER", block.chainid == 10143 ? 0xB9F79d863261869B234c481D1f9A7af84AeAd192 : address(0)
+        );
 
         vm.startBroadcast(pk);
 
@@ -42,6 +48,7 @@ contract Deploy is Script {
         WhisperVault vault = new WhisperVault(
             deployer,
             venue,
+            drawForwarder,
             cs,
             keccak256(bytes(vm.readFile("docs/FRAMEWORK.md"))),
             jitterBefore,
@@ -60,6 +67,7 @@ contract Deploy is Script {
         string memory k = "deployment";
         vm.serializeAddress(k, "operator", deployer);
         vm.serializeAddress(k, "venue", address(venue));
+        vm.serializeAddress(k, "drawForwarder", drawForwarder);
         vm.serializeAddress(k, "mUSDC", address(usdc));
         vm.serializeAddress(k, "mTBILL", address(tbill));
         vm.serializeAddress(k, "mXAU", address(gold));

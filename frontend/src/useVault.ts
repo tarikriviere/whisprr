@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { erc20Abi, type Address, type Hex } from "viem";
 import { usePublicClient } from "wagmi";
 import { vaultAbi, venueAbi } from "./generated/contracts";
-import { STATUS, type Constituent, type Epoch } from "./whisper";
+import { DRAW_SOURCE, STATUS, type Constituent, type Epoch } from "./whisper";
 
 export type VaultState = {
   operator: Address;
@@ -13,6 +13,7 @@ export type VaultState = {
   grace: bigint;
   tolerance: number;
   drawDelay: bigint;
+  drawForwarder: Address;
   constituents: Constituent[];
   total: bigint;
   weights: bigint[];
@@ -29,7 +30,7 @@ export function useVault(vault: Address | undefined) {
     refetchInterval: 2_000,
     queryFn: async (): Promise<VaultState> => {
       const c = { address: vault!, abi: vaultAbi } as const;
-      const [operator, venue, frameworkHash, jitterBefore, jitterAfter, grace, tolerance, drawDelay, addrs, current, weights, block] =
+      const [operator, venue, frameworkHash, jitterBefore, jitterAfter, grace, tolerance, drawDelay, drawForwarder, addrs, current, weights, block] =
         await Promise.all([
           client!.readContract({ ...c, functionName: "operator" }),
           client!.readContract({ ...c, functionName: "venue" }),
@@ -39,6 +40,7 @@ export function useVault(vault: Address | undefined) {
           client!.readContract({ ...c, functionName: "executionGrace" }),
           client!.readContract({ ...c, functionName: "weightToleranceBps" }),
           client!.readContract({ ...c, functionName: "DRAW_DELAY" }),
+          client!.readContract({ ...c, functionName: "drawForwarder" }),
           client!.readContract({ ...c, functionName: "constituents" }),
           client!.readContract({ ...c, functionName: "currentEpoch" }),
           client!.readContract({ ...c, functionName: "currentWeights" }),
@@ -61,17 +63,20 @@ export function useVault(vault: Address | undefined) {
       const ids = Array.from({ length: Number(current) }, (_, i) => current - BigInt(i));
       const epochs = await Promise.all(
         ids.map(async (id): Promise<Epoch> => {
-          const [commitment, committedBlock, drawBlock, windowStart, windowEnd, executeAt, executedAt, executedBlock, status] =
-            await client!.readContract({ ...c, functionName: "epochs", args: [id] });
+          const [[commitment, committedBlock, drawBlock, windowStart, windowEnd, executeAt, executedAt, executedBlock, status, src], fallbackBlock] =
+            await Promise.all([
+              client!.readContract({ ...c, functionName: "epochs", args: [id] }),
+              client!.readContract({ ...c, functionName: "fallbackDrawBlock", args: [id] }),
+            ]);
           return {
             id, commitment, committedBlock, drawBlock, windowStart, windowEnd, executeAt, executedAt, executedBlock,
-            status: STATUS[status],
+            status: STATUS[status], drawSource: DRAW_SOURCE[src], fallbackBlock: BigInt(fallbackBlock),
           };
         }),
       );
 
       return {
-        operator, venue, frameworkHash, jitterBefore, jitterAfter, grace, tolerance, drawDelay,
+        operator, venue, frameworkHash, jitterBefore, jitterAfter, grace, tolerance, drawDelay, drawForwarder,
         constituents, total: constituents.reduce((a, x) => a + x.value, 0n), weights: [...weights],
         epochs, now: block.timestamp, blockNumber: block.number,
       };

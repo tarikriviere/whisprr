@@ -24,13 +24,20 @@ export function EpochPanel({ s, vault, connected }: { s: VaultState; vault: Addr
 
   const nominal = e.windowStart + s.jitterBefore;
   const deadline = e.executeAt + s.grace;
-  const drawReady = e.status === "Committed" && s.blockNumber > e.drawBlock;
+  const drawBlockMined = e.status === "Committed" && s.blockNumber > e.drawBlock;
+  const fallbackOpen = drawBlockMined && s.blockNumber > e.fallbackBlock;
+  const usesCre = e.fallbackBlock > 0n;
   const defaultable = e.status === "Drawn" && s.now > deadline;
+  const drawReady = fallbackOpen;
   const send = (fn: "drawExecutionTime" | "markDefaulted") =>
     tx.run(() => writeContractAsync({ address: vault, abi: vaultAbi, functionName: fn }));
 
   let note = "";
-  if (e.status === "Committed") note = drawReady ? "Draw block mined: anyone can draw the execution time." : `Waiting for draw block ${e.drawBlock} (now ${s.blockNumber}).`;
+  if (e.status === "Committed") {
+    if (!drawBlockMined) note = `Waiting for draw block ${e.drawBlock} (now ${s.blockNumber}).`;
+    else if (usesCre && !fallbackOpen) note = `Waiting for the Chainlink CRE workflow to deliver randomness. Fallback opens at block ${e.fallbackBlock} (${e.fallbackBlock - s.blockNumber} blocks).`;
+    else note = usesCre ? "Chainlink didn't deliver in time: anyone can draw from the block hash." : "Draw block mined: anyone can draw the execution time.";
+  }
   if (e.status === "Drawn") note = s.now < e.executeAt ? `Executes in ${e.executeAt - s.now}s. Nobody, including the operator, knew this time at commit.` : s.now <= deadline ? `Execution window open, ${deadline - s.now}s left in grace.` : "Operator missed the grace period.";
   if (e.status === "Executed") note = "Revealed and executed atomically. Verify it below.";
   if (e.status === "Defaulted") note = "Publicly flagged: the operator didn't execute in time.";
@@ -45,6 +52,7 @@ export function EpochPanel({ s, vault, connected }: { s: VaultState; vault: Addr
         <dt>Sealed commitment</dt><dd className="mono" title={e.commitment}>{short(e.commitment)}</dd>
         <dt>Window</dt><dd className="mono">{fmtTime(e.windowStart)} → {fmtTime(e.windowEnd)}</dd>
         <dt>Drawn execution time</dt><dd className="mono">{fmtTime(e.executeAt)}</dd>
+        <dt>Randomness</dt><dd>{e.status === "Committed" ? (usesCre ? "Chainlink CRE (pending)" : "block hash") : e.drawSource}</dd>
       </dl>
       <div className="timeline" aria-label="Execution window">
         <div className="tl-track" />
@@ -57,7 +65,7 @@ export function EpochPanel({ s, vault, connected }: { s: VaultState; vault: Addr
       <p className="note">{note}</p>
       {connected && (drawReady || defaultable) && (
         <div className="actions">
-          {drawReady && <button onClick={() => send("drawExecutionTime")}>Draw execution time</button>}
+          {drawReady && <button onClick={() => send("drawExecutionTime")}>{usesCre ? "Fallback draw" : "Draw execution time"}</button>}
           {defaultable && <button className="danger" onClick={() => send("markDefaulted")}>Flag as defaulted</button>}
         </div>
       )}

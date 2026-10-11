@@ -3,12 +3,14 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {WhisperVault} from "../src/WhisperVault.sol";
+import {IReceiver} from "../src/IReceiver.sol";
 import {MockRWA} from "../src/mocks/MockRWA.sol";
 import {OracleVenue} from "../src/mocks/OracleVenue.sol";
 
 contract WhisperVaultTest is Test {
     address operator = makeAddr("operator");
     address anyone = makeAddr("anyone");
+    address forwarder = makeAddr("chainlinkForwarder");
 
     MockRWA usdc; // cash leg, 6 decimals
     MockRWA tbill;
@@ -49,7 +51,15 @@ contract WhisperVaultTest is Test {
         cs[2] = address(gold);
         cs[3] = address(spy);
         vault = new WhisperVault(
-            operator, venue, cs, keccak256("methodology-v1"), JITTER_BEFORE, JITTER_AFTER, GRACE, 50
+            operator,
+            venue,
+            forwarder,
+            cs,
+            keccak256("methodology-v1"),
+            JITTER_BEFORE,
+            JITTER_AFTER,
+            GRACE,
+            50
         );
 
         // Seed vault at 25/25/25/25 of $1m.
@@ -80,9 +90,21 @@ contract WhisperVaultTest is Test {
         vault.commit(c, nominal);
     }
 
+    /// Primary path: the CRE workflow delivers a random word through the forwarder.
     function _draw() internal returns (uint64 executeAt) {
         vm.roll(block.number + vault.DRAW_DELAY() + 1);
-        executeAt = vault.drawExecutionTime();
+        uint256 epoch = vault.currentEpoch();
+        vm.prank(forwarder);
+        vault.onReport("", abi.encode(epoch, uint256(keccak256("cre-word"))));
+        (,,,,, executeAt,,,,) = vault.epochs(epoch);
+    }
+
+    function _status(uint256 epoch)
+        internal
+        view
+        returns (WhisperVault.Status s, WhisperVault.DrawSource src)
+    {
+        (,,,,,,,, s, src) = vault.epochs(epoch);
     }
 
     function test_fullLoop() public {
@@ -100,10 +122,12 @@ contract WhisperVaultTest is Test {
         assertApproxEqAbs(cw[1], 4_000, 1);
         assertApproxEqAbs(cw[2], 2_000, 1);
         assertApproxEqAbs(cw[3], 3_000, 1);
-        (,,,,,, uint64 executedAt, uint64 executedBlock, WhisperVault.Status s) = vault.epochs(1);
+        (,,,,,, uint64 executedAt, uint64 executedBlock, WhisperVault.Status s, WhisperVault.DrawSource src) =
+            vault.epochs(1);
         assertEq(uint8(s), uint8(WhisperVault.Status.Executed));
         assertEq(executedAt, executeAt);
         assertEq(executedBlock, block.number);
+        assertEq(uint8(src), uint8(WhisperVault.DrawSource.Chainlink));
     }
 
     function test_nextEpochAfterExecution() public {
@@ -146,8 +170,9 @@ contract WhisperVaultTest is Test {
     function test_drawRearmsWhenHashExpired() public {
         _commit();
         vm.roll(block.number + 1_000);
+        // Long past the CRE timeout, so the fallback is open, but the draw block's hash is gone.
         assertEq(vault.drawExecutionTime(), 0);
-        (,, uint64 drawBlock,,,,,, WhisperVault.Status s) = vault.epochs(1);
+        (,, uint64 drawBlock,,,,,, WhisperVault.Status s,) = vault.epochs(1);
         assertEq(drawBlock, block.number + vault.DRAW_DELAY());
         assertEq(uint8(s), uint8(WhisperVault.Status.Committed));
     }
@@ -182,7 +207,7 @@ contract WhisperVaultTest is Test {
 
         vm.prank(anyone);
         vault.markDefaulted();
-        (,,,,,,,, WhisperVault.Status s) = vault.epochs(1);
+        (,,,,,,,, WhisperVault.Status s,) = vault.epochs(1);
         assertEq(uint8(s), uint8(WhisperVault.Status.Defaulted));
     }
 
@@ -233,13 +258,128 @@ contract WhisperVaultTest is Test {
         vault.execute(w, t, SALT);
     }
 
-    function testFuzz_drawAlwaysInsideWindow(bytes32 commitment, uint32 offset) public {
+    function testFuzz_drawAlwaysInsideWindow(bytes32 commitment, uint32 offset, uint256 word, bool viaCre)
+        public
+    {
         uint64 nominal = uint64(block.timestamp) + JITTER_BEFORE + 1 + offset;
         vm.prank(operator);
         vault.commit(commitment, nominal);
-        vm.roll(block.number + vault.DRAW_DELAY() + 1);
-        uint64 executeAt = vault.drawExecutionTime();
+        uint64 executeAt;
+        if (viaCre) {
+            vm.roll(block.number + vault.DRAW_DELAY() + 1);
+            vm.prank(forwarder);
+            vault.onReport("", abi.encode(uint256(1), word));
+            (,,,,, executeAt,,,,) = vault.epochs(1);
+        } else {
+            vm.roll(vault.fallbackDrawBlock(1) + 1);
+            executeAt = vault.drawExecutionTime();
+        }
         assertGe(executeAt, nominal - JITTER_BEFORE);
         assertLe(executeAt, nominal + JITTER_AFTER);
+    }
+
+    // ---- Chainlink CRE draw ----
+
+    function test_cre_onlyForwarder() public {
+        _commit();
+        vm.roll(block.number + vault.DRAW_DELAY() + 1);
+        vm.prank(anyone);
+        vm.expectRevert(abi.encodeWithSelector(WhisperVault.NotForwarder.selector, anyone));
+        vault.onReport("", abi.encode(uint256(1), uint256(42)));
+    }
+
+    function test_cre_staleEpochRejected() public {
+        _commit();
+        vm.roll(block.number + vault.DRAW_DELAY() + 1);
+        vm.prank(forwarder);
+        vm.expectRevert(abi.encodeWithSelector(WhisperVault.StaleReport.selector, 7, 1));
+        vault.onReport("", abi.encode(uint256(7), uint256(42)));
+    }
+
+    function test_cre_notBeforeDrawBlock() public {
+        _commit();
+        vm.prank(forwarder);
+        vm.expectPartialRevert(WhisperVault.DrawNotReady.selector);
+        vault.onReport("", abi.encode(uint256(1), uint256(42)));
+    }
+
+    function test_cre_secondReportRejected() public {
+        _commit();
+        _draw();
+        vm.prank(forwarder);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                WhisperVault.WrongStatus.selector, WhisperVault.Status.Committed, WhisperVault.Status.Drawn
+            )
+        );
+        vault.onReport("", abi.encode(uint256(1), uint256(43)));
+    }
+
+    function test_cre_wordChangesOutcome() public {
+        _commit();
+        vm.roll(block.number + vault.DRAW_DELAY() + 1);
+        uint256 snap = vm.snapshotState();
+        vm.prank(forwarder);
+        vault.onReport("", abi.encode(uint256(1), uint256(1)));
+        (,,,,, uint64 a,,,,) = vault.epochs(1);
+        vm.revertToState(snap);
+        vm.prank(forwarder);
+        vault.onReport("", abi.encode(uint256(1), uint256(2)));
+        (,,,,, uint64 b,,,,) = vault.epochs(1);
+        assertTrue(a != b);
+    }
+
+    function test_pendingDraw() public {
+        _commit();
+        (bool ready, uint256 epoch) = vault.pendingDraw();
+        assertFalse(ready);
+        assertEq(epoch, 1);
+        vm.roll(block.number + vault.DRAW_DELAY() + 1);
+        (ready,) = vault.pendingDraw();
+        assertTrue(ready);
+        _draw();
+        (ready,) = vault.pendingDraw();
+        assertFalse(ready);
+    }
+
+    function test_supportsReceiverInterface() public view {
+        assertTrue(vault.supportsInterface(type(IReceiver).interfaceId));
+        assertTrue(vault.supportsInterface(0x01ffc9a7));
+        assertFalse(vault.supportsInterface(0xdeadbeef));
+    }
+
+    // ---- fallback draw ----
+
+    function test_fallback_blockedWhileAwaitingChainlink() public {
+        _commit();
+        vm.roll(block.number + vault.DRAW_DELAY() + 1);
+        vm.expectRevert(
+            abi.encodeWithSelector(WhisperVault.AwaitingChainlink.selector, vault.fallbackDrawBlock(1))
+        );
+        vault.drawExecutionTime();
+    }
+
+    function test_fallback_afterTimeout() public {
+        _commit();
+        vm.roll(vault.fallbackDrawBlock(1) + 1);
+        vm.prank(anyone);
+        assertGt(vault.drawExecutionTime(), 0);
+        (WhisperVault.Status s, WhisperVault.DrawSource src) = _status(1);
+        assertEq(uint8(s), uint8(WhisperVault.Status.Drawn));
+        assertEq(uint8(src), uint8(WhisperVault.DrawSource.BlockHash));
+    }
+
+    function test_creDisabled_fallbackImmediate_reportRejected() public {
+        address[] memory cs = vault.constituents();
+        WhisperVault v2 = new WhisperVault(
+            operator, venue, address(0), cs, keccak256("m"), JITTER_BEFORE, JITTER_AFTER, GRACE, 50
+        );
+        vm.prank(operator);
+        v2.commit(keccak256("c"), uint64(block.timestamp + 7 days));
+        vm.roll(block.number + v2.DRAW_DELAY() + 1);
+        vm.prank(forwarder);
+        vm.expectRevert(abi.encodeWithSelector(WhisperVault.NotForwarder.selector, forwarder));
+        v2.onReport("", abi.encode(uint256(1), uint256(42)));
+        assertGt(v2.drawExecutionTime(), 0);
     }
 }

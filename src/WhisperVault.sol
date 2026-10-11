@@ -5,7 +5,9 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IPriceVenue} from "./IPriceVenue.sol";
+import {IReceiver} from "./IReceiver.sol";
 
 /// @title WhisperVault
 /// @notice An onchain index whose rebalances can't be front-run.
@@ -18,25 +20,37 @@ import {IPriceVenue} from "./IPriceVenue.sol";
 /// Lifecycle of an epoch:
 ///   1. commit(commitment, nominalTime): operator seals keccak256(preimage); the execution
 ///      window [nominalTime - jitterBefore, nominalTime + jitterAfter] is fixed.
-///   2. drawExecutionTime(): anyone, once the draw block is mined, derives the exact execution
-///      time inside the window from that block's hash, which wasn't known at commit.
+///   2. The exact execution time inside the window is drawn after commit:
+///      - primarily by a Chainlink CRE workflow, whose random word arrives through the
+///        Chainlink forwarder (onReport) and is mixed with the draw block's hash;
+///      - or, if CRE hasn't delivered within CRE_TIMEOUT_BLOCKS, by anyone calling
+///        drawExecutionTime(), which uses the draw block's hash alone.
 ///   3. execute(weights, trades, salt): operator reveals the preimage within the grace period
 ///      after the drawn time. The vault checks the hash, runs every trade, and checks that the
 ///      resulting portfolio matches the committed weights. Reveal and execution are one atomic
 ///      transaction, so the instructions are never public before they've executed.
 ///   4. If the operator misses the grace period, anyone can call markDefaulted().
-contract WhisperVault is ReentrancyGuard {
+contract WhisperVault is ReentrancyGuard, IReceiver {
     using SafeERC20 for IERC20;
 
     uint16 public constant BPS = 10_000;
     /// @dev Blocks between commit and the block whose hash seeds the execution-time draw.
     uint64 public constant DRAW_DELAY = 5;
+    /// @dev Blocks after the draw block during which only the CRE workflow may draw (~80s on Monad).
+    /// Kept under the 256-block hash horizon so the fallback can still use the draw block's hash..
+    uint64 public constant CRE_TIMEOUT_BLOCKS = 200;
 
     struct Trade {
         uint8 tokenIn; // index into constituents
         uint8 tokenOut; // index into constituents
         uint256 amountIn;
         uint256 minAmountOut;
+    }
+
+    enum DrawSource {
+        None,
+        BlockHash,
+        Chainlink
     }
 
     enum Status {
@@ -57,11 +71,14 @@ contract WhisperVault is ReentrancyGuard {
         uint64 executedAt;
         uint64 executedBlock; // lets indexers fetch the Executed event (the reveal) without a log scan
         Status status;
+        DrawSource drawSource;
     }
 
     // ---- public framework (disclosed in the clear at deployment) ----
     address public immutable operator;
     IPriceVenue public immutable venue;
+    /// @notice Chainlink forwarder allowed to deliver CRE randomness reports; zero disables CRE draws.
+    address public immutable drawForwarder;
     bytes32 public immutable frameworkHash;
     uint64 public immutable jitterBefore;
     uint64 public immutable jitterAfter;
@@ -88,7 +105,7 @@ contract WhisperVault is ReentrancyGuard {
         uint64 windowEnd,
         uint64 drawBlock
     );
-    event ExecutionTimeDrawn(uint256 indexed epoch, uint64 executeAt, bytes32 seed);
+    event ExecutionTimeDrawn(uint256 indexed epoch, uint64 executeAt, bytes32 seed, DrawSource source);
     event DrawRearmed(uint256 indexed epoch, uint64 newDrawBlock);
     event TradeExecuted(
         uint256 indexed epoch,
@@ -103,6 +120,9 @@ contract WhisperVault is ReentrancyGuard {
     event Defaulted(uint256 indexed epoch);
 
     error NotOperator();
+    error NotForwarder(address sender);
+    error StaleReport(uint256 reportEpoch, uint256 currentEpoch);
+    error AwaitingChainlink(uint64 fallbackBlock);
     error BadFramework();
     error EpochOpen(uint256 epoch, Status status);
     error WrongStatus(Status expected, Status actual);
@@ -124,6 +144,7 @@ contract WhisperVault is ReentrancyGuard {
     constructor(
         address operator_,
         IPriceVenue venue_,
+        address drawForwarder_,
         address[] memory constituents_,
         bytes32 frameworkHash_,
         uint64 jitterBefore_,
@@ -137,6 +158,7 @@ contract WhisperVault is ReentrancyGuard {
         if (executionGrace_ == 0 || weightToleranceBps_ > BPS) revert BadFramework();
         operator = operator_;
         venue = venue_;
+        drawForwarder = drawForwarder_;
         _constituents = constituents_;
         frameworkHash = frameworkHash_;
         jitterBefore = jitterBefore_;
@@ -216,19 +238,23 @@ contract WhisperVault is ReentrancyGuard {
             executeAt: 0,
             executedAt: 0,
             executedBlock: 0,
-            status: Status.Committed
+            status: Status.Committed,
+            drawSource: DrawSource.None
         });
         emit Committed(epoch, commitment, windowStart, nominalTime + jitterAfter, drawBlock);
     }
 
-    /// @notice Draw the exact execution time from a block hash that didn't exist at commit time.
-    /// Callable by anyone. If the draw block falls out of the 256-block hash horizon, the draw is
-    /// re-armed to a fresh future block rather than accepting a predictable seed.
+    /// @notice Fallback draw from a block hash that didn't exist at commit time. Callable by anyone,
+    /// but when a CRE forwarder is configured only after CRE_TIMEOUT_BLOCKS without a report.
+    /// If the draw block falls out of the 256-block hash horizon, the draw is re-armed to a fresh
+    /// future block rather than accepting a predictable seed.
     function drawExecutionTime() external returns (uint64 executeAt) {
         uint256 epoch = currentEpoch;
         Epoch storage e = epochs[epoch];
         if (e.status != Status.Committed) revert WrongStatus(Status.Committed, e.status);
         if (block.number <= e.drawBlock) revert DrawNotReady(e.drawBlock);
+        uint64 fallbackBlock = fallbackDrawBlock(epoch);
+        if (block.number <= fallbackBlock) revert AwaitingChainlink(fallbackBlock);
 
         bytes32 bh = blockhash(e.drawBlock);
         if (bh == bytes32(0)) {
@@ -236,13 +262,50 @@ contract WhisperVault is ReentrancyGuard {
             emit DrawRearmed(epoch, e.drawBlock);
             return 0;
         }
+        return _setExecuteAt(epoch, keccak256(abi.encode(bh, e.commitment, epoch)), DrawSource.BlockHash);
+    }
 
-        bytes32 seed = keccak256(abi.encode(bh, e.commitment, epoch));
+    /// @notice CRE report entry point: report = abi.encode(uint256 epoch, uint256 randomWord).
+    function onReport(bytes calldata, bytes calldata report) external {
+        if (drawForwarder == address(0) || msg.sender != drawForwarder) revert NotForwarder(msg.sender);
+        (uint256 epoch, uint256 randomWord) = abi.decode(report, (uint256, uint256));
+        if (epoch != currentEpoch) revert StaleReport(epoch, currentEpoch);
+        Epoch storage e = epochs[epoch];
+        if (e.status != Status.Committed) revert WrongStatus(Status.Committed, e.status);
+        if (block.number <= e.drawBlock) revert DrawNotReady(e.drawBlock);
+        // The block hash is mixed in when still available, so the CRE word alone doesn't decide.
+        bytes32 seed = keccak256(abi.encode(randomWord, blockhash(e.drawBlock), e.commitment, epoch));
+        _setExecuteAt(epoch, seed, DrawSource.Chainlink);
+    }
+
+    function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
+        return interfaceId == type(IReceiver).interfaceId || interfaceId == type(IERC165).interfaceId;
+    }
+
+    /// @notice Block after which the fallback draw opens (0 when CRE is disabled).
+    function fallbackDrawBlock(uint256 epoch) public view returns (uint64) {
+        if (drawForwarder == address(0)) return 0;
+        return epochs[epoch].committedBlock + DRAW_DELAY + CRE_TIMEOUT_BLOCKS;
+    }
+
+    /// @notice What the CRE workflow polls: whether the current epoch is waiting for a draw.
+    function pendingDraw() external view returns (bool ready, uint256 epoch) {
+        epoch = currentEpoch;
+        Epoch storage e = epochs[epoch];
+        ready = e.status == Status.Committed && block.number > e.drawBlock;
+    }
+
+    function _setExecuteAt(uint256 epoch, bytes32 seed, DrawSource source)
+        internal
+        returns (uint64 executeAt)
+    {
+        Epoch storage e = epochs[epoch];
         uint64 span = e.windowEnd - e.windowStart + 1;
         executeAt = e.windowStart + uint64(uint256(seed) % span);
         e.executeAt = executeAt;
         e.status = Status.Drawn;
-        emit ExecutionTimeDrawn(epoch, executeAt, seed);
+        e.drawSource = source;
+        emit ExecutionTimeDrawn(epoch, executeAt, seed, source);
     }
 
     /// @notice Reveal the sealed rebalance and execute it atomically.

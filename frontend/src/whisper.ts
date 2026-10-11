@@ -5,6 +5,7 @@ export const BPS = 10_000n;
 export const CASH = 0;
 export const STATUS = ["None", "Committed", "Drawn", "Executed", "Defaulted"] as const;
 export type Status = (typeof STATUS)[number];
+export const DRAW_SOURCE = ["–", "block hash (fallback)", "Chainlink CRE"] as const;
 
 export type Trade = { tokenIn: number; tokenOut: number; amountIn: bigint; minAmountOut: bigint };
 
@@ -28,6 +29,8 @@ export type Epoch = {
   executedAt: bigint;
   executedBlock: bigint;
   status: Status;
+  drawSource: (typeof DRAW_SOURCE)[number];
+  fallbackBlock: bigint; // 0 when CRE is disabled
 };
 
 export type Sealed = { chainId: number; vault: Address; epoch: bigint; weights: number[]; trades: Trade[]; salt: Hex };

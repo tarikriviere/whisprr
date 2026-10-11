@@ -46,6 +46,7 @@ function EpochRow({ e, s, vault }: { e: Epoch; s: VaultState; vault: Address }) 
         <span className={`pill pill-${e.status.toLowerCase()}`}>{e.status}</span>
         <span className="mono muted" title={e.commitment}>{short(e.commitment)}</span>
         {e.executedAt > 0n && <span className="muted">executed {fmtTime(e.executedAt)}</span>}
+        {e.drawSource !== "–" && <span className="muted">· timing: {e.drawSource}</span>}
       </div>
       {r && (
         <div className="reveal">
