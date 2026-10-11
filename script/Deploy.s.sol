@@ -75,6 +75,12 @@ contract Deploy is Script {
         string memory json = vm.serializeAddress(k, "vault", address(vault));
         vm.writeJson(json, string.concat("deployments/", vm.toString(block.chainid), ".json"));
 
+        // Point the CRE workflow at the new vault.
+        if (block.chainid == 10143) {
+            vm.writeJson(vm.toString(address(vault)), "cre/whisper-draw/config.staging.json", ".vaultAddress");
+            vm.writeJson(vm.toString(address(vault)), "cre/whisper-draw/config.production.json", ".vaultAddress");
+        }
+
         console.log("WhisperVault:", address(vault));
         console.log("OracleVenue: ", address(venue));
     }

@@ -1,0 +1,6 @@
+{
+  "schedule": "*/30 * * * * *",
+  "chainSelectorName": "monad-testnet",
+  "vaultAddress": "0x0000000000000000000000000000000000000000",
+  "gasLimit": "300000"
+}
