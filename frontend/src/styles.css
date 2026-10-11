@@ -120,3 +120,13 @@ button.danger { background: var(--warn); }
 
 footer { margin-top: 32px; text-align: center; }
 .setup { max-width: 560px; margin: 80px auto; padding: 0 16px; }
+
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 12px; margin-bottom: 8px; }
+.stat-value { font-size: 18px; font-weight: 500; }
+.strip { position: relative; height: 40px; margin: 8px 6px 0; }
+.strip-track { position: absolute; top: 18px; left: 0; right: 0; height: 2px; background: var(--border); }
+.strip-zero { position: absolute; top: 6px; width: 1px; height: 26px; background: var(--muted); }
+.strip-zero span { position: absolute; top: -14px; left: 50%; transform: translateX(-50%); font-size: 11px; color: var(--muted); }
+.strip-dot { position: absolute; top: 13px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--c3); box-shadow: 0 0 0 2px var(--surface); opacity: 0.85; cursor: default; }
+.strip-dot:hover { opacity: 1; transform: scale(1.3); }
+.strip-axis { display: flex; justify-content: space-between; margin: 0 6px; }

@@ -7,6 +7,7 @@ import { Portfolio } from "./components/Portfolio";
 import { EpochPanel } from "./components/EpochPanel";
 import { OperatorConsole } from "./components/OperatorConsole";
 import { History } from "./components/History";
+import { TrackRecord } from "./components/TrackRecord";
 import { short } from "./whisper";
 
 export function App() {
@@ -39,6 +40,7 @@ export function App() {
         <div className="grid">
           <div className="col">
             <Portfolio s={s} />
+            <TrackRecord s={s} vault={vault} />
             <History s={s} vault={vault} />
           </div>
           <div className="col">
