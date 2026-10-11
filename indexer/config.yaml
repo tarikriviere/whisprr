@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=./node_modules/envio/evm.schema.json
+name: whisper-indexer
+disable_default_cross_chain: true
+field_selection:
+  transaction_fields:
+  - hash
+chains:
+- id: 10143
+  start_block: 0
+  contracts:
+  - name: WhisperVault
+    address:
+    - '0x0000000000000000000000000000000000000001'
+    events:
+    - event: Committed(uint256 indexed epoch, bytes32 indexed commitment, uint64 windowStart, uint64 windowEnd, uint64 drawBlock)
+    - event: Defaulted(uint256 indexed epoch)
+    - event: DrawRearmed(uint256 indexed epoch, uint64 newDrawBlock)
+    - event: Executed(uint256 indexed epoch, bytes32 indexed commitment, uint16[] weights, (uint8,uint8,uint256,uint256)[] trades, bytes32 salt)
+    - event: ExecutionTimeDrawn(uint256 indexed epoch, uint64 executeAt, bytes32 seed, uint8 source)
+    - event: FrameworkPublished(bytes32 indexed frameworkHash, address[] constituents, uint64 jitterBefore, uint64 jitterAfter, uint64 executionGrace, uint16 weightToleranceBps)
+    - event: TradeExecuted(uint256 indexed epoch, address indexed tokenIn, address indexed tokenOut, uint256 amountIn, uint256 amountOut)

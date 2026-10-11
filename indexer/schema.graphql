@@ -1,0 +1,64 @@
+# One row per WhisperVault: the public framework and running totals.
+type Vault {
+  id: ID! # chainId-address
+  address: String!
+  frameworkHash: String!
+  constituents: [String!]!
+  jitterBefore: BigInt!
+  jitterAfter: BigInt!
+  executionGrace: BigInt!
+  weightToleranceBps: Int!
+  epochCount: Int!
+  executedCount: Int!
+  defaultedCount: Int!
+  verifiedCount: Int!
+  chainlinkDraws: Int!
+  fallbackDraws: Int!
+}
+
+# One row per sealed rebalance, following it from commit to reveal.
+type Epoch {
+  id: ID! # chainId-vault-epoch
+  vault: Vault!
+  epoch: BigInt!
+  status: String! # Committed | Drawn | Executed | Defaulted
+  commitment: String!
+  committedAt: BigInt!
+  commitTx: String!
+  windowStart: BigInt!
+  windowEnd: BigInt!
+  nominalTime: BigInt!
+  drawBlock: BigInt!
+  rearms: Int!
+  # draw
+  drawSource: String # Chainlink | BlockHash
+  seed: String
+  executeAt: BigInt
+  # executeAt - nominalTime: the randomized offset, zero-mean by construction
+  offsetFromNominal: BigInt
+  drawTx: String
+  # reveal + execution
+  executedAt: BigInt
+  executeTx: String
+  weights: [Int!]
+  salt: String
+  tradeCount: Int!
+  # keccak256(abi.encode(chainid, vault, epoch, weights, trades, salt)) recomputed by the indexer
+  revealHash: String
+  verified: Boolean
+  # seconds between commitment and execution: how long the weights stayed sealed
+  sealedSeconds: BigInt
+  trades: [Trade!]! @derivedFrom(field: "epochRef")
+}
+
+type Trade {
+  id: ID!
+  epochRef: Epoch!
+  index: Int!
+  tokenIn: String!
+  tokenOut: String!
+  amountIn: BigInt!
+  amountOut: BigInt!
+  tx: String!
+  timestamp: BigInt!
+}
