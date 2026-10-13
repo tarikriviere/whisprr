@@ -49,7 +49,7 @@ export function App() {
             {address && !isOperator && (
               <section className="card muted small">
                 Signed in{user?.email ? ` as ${user.email}` : ""} with {short(address)}. Only the operator wallet{" "}
-                {short(s.operator)} can commit, and only Chainlink can execute. Anyone can record the seed, flag a default, or
+                {short(s.operator)} can commit, and only the Chainlink CRE keeper can execute. Anyone can record the seed, flag a default, or
                 verify a reveal.
               </section>
             )}
@@ -68,7 +68,7 @@ export function App() {
                 <dt>Execution tolerance</dt><dd className="mono">{s.grace.toString()}s</dd>
                 <dt>Weight tolerance</dt><dd className="mono">{s.tolerance} bps</dd>
                 <dt>Execution time</dt><dd>keccak256(salt, Monad seed) in window</dd>
-                <dt>Executor</dt><dd>Chainlink CRE via <Addr a={s.chainlinkForwarder} /></dd>
+                <dt>Executor</dt><dd>Chainlink CRE workflow (in Chainlink's simulator) via <Addr a={s.chainlinkForwarder} /></dd>
               </dl>
             </section>
           </div>

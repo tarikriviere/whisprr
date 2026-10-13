@@ -28,7 +28,7 @@ Each rebalance goes through four steps:
    `executeAt = windowStart + keccak256(salt, seedHash) mod (window length + 1)`
 
    The salt was locked inside the commitment before the block existed, and nobody knew the block hash at commit time, so nobody chose the second. Without the salt, nobody can compute it: the market sees only the window.
-3. **Execute (Chainlink only).** When the second arrives, the keeper delivers an `EXECUTE` report through the Chainlink forwarder. In **one transaction** the vault checks the plan against the commitment, recomputes `executeAt` from the revealed salt and requires `executeAt ≤ now ≤ executeAt + tolerance`, then **sizes the trades itself from the prices at that second** (sell overweight constituents into cash, buy underweight ones), executes them against tokenized RWA constituents, and checks the resulting weights. Only the weights are committed, so the vault lands on target however far prices moved inside the window. The market learns the time, the weights and the trades in the same transaction. The operator has **no function to execute with**.
+3. **Execute (Chainlink CRE keeper only).** When the second arrives, the keeper delivers an `EXECUTE` report through the Chainlink forwarder. In **one transaction** the vault checks the plan against the commitment, recomputes `executeAt` from the revealed salt and requires `executeAt ≤ now ≤ executeAt + tolerance`, then **sizes the trades itself from the prices at that second** (sell overweight constituents into cash, buy underweight ones), executes them against tokenized RWA constituents, and checks the resulting weights. Only the weights are committed, so the vault lands on target however far prices moved inside the window. The market learns the time, the weights and the trades in the same transaction. The operator has **no function to execute with**.
 4. **Verify, or default.** Anyone can recompute both the hash and the execution second from the `Executed` event; the frontend and the Envio indexer both do so independently. If nothing executes by the end of the window plus the tolerance, anyone can flag the rebalance as defaulted onchain.
 
 | Who | Can | Can't |
@@ -44,6 +44,8 @@ There's no ZK here. A hash commitment is the right primitive: the plan only need
 Randomizing the date means filling at a slightly different price than the anchor would have given. That difference is **zero-mean noise**: as likely to help as to hurt. Front-running drag is **one-directional**: research on index rebalances (Dimensional; Arnott et al.) puts it at roughly 20 bps per traded dollar, around 23 bps a year for a cap-weighted index, lost on every rebalance. Whisprr trades a predictable leak for noise that averages out.
 
 ## Live on Monad testnet
+
+Contracts and transactions are live on Monad testnet. The Chainlink CRE keeper workflow runs in **Chainlink's CRE simulator** on a local machine (deploying to Chainlink's network needs deploy access, which is pending), and every seed and execution it produces is a real Monad testnet transaction through Chainlink's forwarder.
 
 | Contract | Address |
 |---|---|
@@ -116,7 +118,7 @@ flowchart LR
 
 ### Sponsor integrations
 
-- **Chainlink CRE.** The `whisprr-keeper` TypeScript workflow is the **only executor** of a committed rebalance. It holds the sealed plan as a workflow secret, records the Monad seed, computes the sealed second, and delivers the execution through the forwarder at that second. The vault accepts reports only from the forwarder, for the current epoch, and only inside `[executeAt, executeAt + tolerance]`.
+- **Chainlink CRE.** The `whisprr-keeper` TypeScript workflow, built on Chainlink's CRE SDK, is the **only executor** of a committed rebalance. Today it runs in Chainlink's CRE simulator on a local machine and broadcasts real Monad testnet transactions; running it on Chainlink's network is a deployment step, not a code change (see Limitations). It holds the sealed plan as a workflow secret, records the Monad seed, computes the sealed second, and delivers the execution through the forwarder at that second. The vault accepts reports only from the forwarder, for the current epoch, and only inside `[executeAt, executeAt + tolerance]`.
 - **Envio.** HyperIndex turns raw events into the rebalance history the product is about: how long each rebalance stayed sealed, where its second landed relative to the anchor, and two checks it computes itself rather than trusting the contract: the reveal re-hashes to the commitment, and execution landed at the second `keccak256(salt, seed)` implies.
 - **Dynamic.** Sign-in with embedded or external wallets, used for more than login. The connected wallet's role decides what you can do: the operator gets the sealing console (commit only, no execute button), anyone signed in can record the seed or flag a default, and everyone can verify.
 
@@ -155,7 +157,7 @@ cre/keeper.sh                                                                   
 
 ## Limitations
 
-- **The keeper runs in simulation on testnet.** Deploying a workflow to Chainlink's network needs deploy access we don't have yet, so `cre/keeper.sh` triggers the workflow every 15 s from a local machine instead of Chainlink's own schedule, and reports go through Monad testnet's *simulation* forwarder, which doesn't verify DON signatures. Even so, a forged report would still need the sealed plan, and would still only execute at the sealed second. Production: a deployed workflow, the **KeystoneForwarder** (`CHAINLINK_FORWARDER=0xF8344CFd5c43616a4366C34E3EEE75af79a74482`), and a check of the report's workflow ID in `onReport`.
+- **The keeper runs in simulation on testnet.** Deploying a workflow to Chainlink's network needs deploy access we don't have yet, so the workflow runs in Chainlink's CRE simulator: `cre/keeper.sh` triggers it every 15 s from a local machine (and right at the sealed second, with a per-run timeout and immediate retry if the CLI stalls) instead of Chainlink's own schedule, and reports go through Monad testnet's *simulation* forwarder, which doesn't verify DON signatures. Even so, a forged report would still need the sealed plan, and would still only execute at the sealed second. Production: a deployed workflow, the **KeystoneForwarder** (`CHAINLINK_FORWARDER=0xF8344CFd5c43616a4366C34E3EEE75af79a74482`), and a check of the report's workflow ID in `onReport`.
 - **The operator knows the salt**, so once the seed is recorded it could compute the second. It still can't change it, execute, or delay it. Removing that knowledge is on the roadmap.
 - **Seed re-arm.** If nobody records the seed within 256 blocks (~100 s), it re-arms to a fresh block. With the keeper running, the seed is recorded within one polling interval.
 - **Prices** come from an owner-set venue standing in for an RWA market. On testnet, `script/price-feed.sh` moves them with a mean-reverting random walk (mSPY and mXAU every 30 s, a slow accrual for mTBILL, mUSDC at $1), signed by a dedicated price-feed key that owns the venue. Pyth feeds would mark constituents to market.

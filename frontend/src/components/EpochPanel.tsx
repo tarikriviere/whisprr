@@ -62,10 +62,10 @@ export function EpochPanel({ s, vault, connected }: { s: VaultState; vault: Addr
   if (e.status === "Seeded") {
     note = defaultable
       ? "The window and tolerance have passed without execution: anyone can flag a default."
-      : "The execution second is now fixed: keccak256(salt, seed) inside the window. Only the sealed plan's holders can compute it. Chainlink executes at that second; the operator can't.";
+      : "The execution second is now fixed: keccak256(salt, seed) inside the window. Only the sealed plan's holders can compute it. The Chainlink CRE keeper executes at that second; the operator can't.";
   }
   if (e.status === "Executed") {
-    note = `Chainlink executed at the sealed second (+${e.executedAt - e.executeAt}s). The time and the trades became public in the same transaction.`;
+    note = `The Chainlink CRE keeper executed at the sealed second (+${e.executedAt - e.executeAt}s). The time and the trades became public in the same transaction.`;
   }
   if (e.status === "Defaulted") note = "Publicly flagged: not executed by the end of its window.";
 

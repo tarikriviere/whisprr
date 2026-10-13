@@ -137,7 +137,7 @@ function SealedPanel({ s, vault }: { s: VaultState; vault: Address }) {
         sealed && matches && <p className="countdown mono">Waiting for the Monad seed: then the second is fixed</p>
       )}
       <p className="muted">
-        Rebalance #{e.id.toString()} is sealed. Your part is done: Chainlink executes it at the second its salt and the
+        Rebalance #{e.id.toString()} is sealed. Your part is done: the Chainlink CRE keeper executes it at the second its salt and the
         seed block imply. The market sees only the window and can't compute this second without the salt; you can't
         change it. There's no execute button, for anyone.
       </p>
