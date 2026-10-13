@@ -8,7 +8,7 @@ import { EpochPanel } from "./components/EpochPanel";
 import { OperatorConsole } from "./components/OperatorConsole";
 import { History } from "./components/History";
 import { TrackRecord } from "./components/TrackRecord";
-import { short } from "./whisprr";
+import { fmtDuration, fmtTime, short } from "./whisprr";
 
 export function App() {
   const vault = deployments[String(chain.id)]?.vault;
@@ -28,8 +28,8 @@ export function App() {
       </header>
 
       <p className="lede">
-        The rules are public. The weights stay sealed until the block they execute in, and that block is drawn at random.
-        Nobody can trade ahead of a rebalance they can't see.
+        The rules and the schedule are public. The weights, and the exact second each rebalance executes, stay sealed until
+        it happens. Nobody can trade ahead of a rebalance they can't see, and nobody picks when it runs.
       </p>
 
       {!vault && <div className="card warn">No deployment for chain {chain.id}. Run the deploy script, then restart the dev server.</div>}
@@ -59,6 +59,8 @@ export function App() {
                 <dt>Vault</dt><dd className="mono"><Addr a={vault} /></dd>
                 <dt>Operator</dt><dd className="mono"><Addr a={s.operator} /></dd>
                 <dt>Framework hash</dt><dd className="mono" title={s.frameworkHash}>{short(s.frameworkHash)}</dd>
+                <dt>Schedule</dt><dd className="mono">every {fmtDuration(s.rebalancePeriod)} from {fmtTime(s.scheduleStart)}</dd>
+                <dt>Commit deadline</dt><dd className="mono">{s.commitLead.toString()}s before the window</dd>
                 <dt>Jitter window</dt><dd className="mono">−{s.jitterBefore.toString()}s / +{s.jitterAfter.toString()}s</dd>
                 <dt>Execution tolerance</dt><dd className="mono">{s.grace.toString()}s</dd>
                 <dt>Weight tolerance</dt><dd className="mono">{s.tolerance} bps</dd>

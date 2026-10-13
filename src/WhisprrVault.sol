@@ -13,15 +13,17 @@ import {IReceiver} from "./IReceiver.sol";
 /// @notice An onchain index whose rebalances can't be front-run, and whose timing no one chooses.
 ///
 /// The *framework* is public from deployment: the constituent universe, a hash of the
-/// methodology document, the execution window around each nominal date, the execution
-/// tolerance and the weight tolerance. The *specifics* of each rebalance (target weights and a
+/// methodology document, the rebalance schedule (every nominal date), the execution window
+/// around each nominal date, the execution tolerance and the weight tolerance. The *specifics* of each rebalance (target weights and a
 /// salt) are sealed behind a hash commitment, and so is its exact execution time. Trades aren't
 /// committed: the vault sizes them itself at execution, from the venue's prices at that second.
 ///
 /// Lifecycle of an epoch:
-///   1. commit(commitment, nominalTime): the operator seals keccak256(preimage). The preimage
-///      includes a random salt. The window [nominal - jitterBefore, nominal + jitterAfter] is
-///      public; the exact time inside it is not.
+///   1. commit(commitment): the operator seals keccak256(preimage) for the next scheduled
+///      rebalance, at least commitLead before its window opens. The preimage includes a random
+///      salt. Nominal dates are fixed by the schedule (scheduleStart + k * rebalancePeriod), so the
+///      window [nominal - jitterBefore, nominal + jitterAfter] is public from deployment; the
+///      exact time inside it is not.
 ///   2. recordSeed(): SEED_DELAY blocks later, the hash of that block (unknown to everyone at
 ///      commit) is stored onchain. Anyone can record it; the Chainlink workflow does so too.
 ///      From here the execution time is fixed:
@@ -35,7 +37,10 @@ import {IReceiver} from "./IReceiver.sol";
 ///      the target weights at current prices, and checks the result. The market learns the time,
 ///      the weights and the trades in the same transaction.
 ///      The operator has no function to execute with: it can't choose when, or whether.
-///   4. If nothing has executed by windowEnd + executionTolerance, anyone can markDefaulted().
+///   4. If nothing has executed by windowEnd + executionTolerance, anyone can markDefaulted(),
+///      and the next commit flags it automatically.
+///   The operator decides only the weights, and whether to rebalance at a scheduled date at all.
+///   A slot without a commitment passes publicly.
 contract WhisprrVault is ReentrancyGuard, IReceiver {
     using SafeERC20 for IERC20;
 
@@ -46,6 +51,16 @@ contract WhisprrVault is ReentrancyGuard, IReceiver {
     /// @dev Report kinds delivered by the CRE workflow: report = abi.encode(uint8 kind, bytes body).
     uint8 public constant REPORT_RECORD_SEED = 1; // body = abi.encode(uint256 epoch)
     uint8 public constant REPORT_EXECUTE = 2; // body = abi.encode(uint256 epoch, uint16[] weights, bytes32 salt)
+
+    /// @dev All public timing rules, fixed at deployment.
+    struct Timing {
+        uint64 jitterBefore;
+        uint64 jitterAfter;
+        uint64 executionTolerance;
+        uint64 scheduleStart;
+        uint64 rebalancePeriod;
+        uint64 commitLead;
+    }
 
     enum Status {
         None,
@@ -78,6 +93,11 @@ contract WhisprrVault is ReentrancyGuard, IReceiver {
     uint64 public immutable jitterAfter;
     /// @notice How late after executeAt Chainlink's execution may land (covers its polling interval).
     uint64 public immutable executionTolerance;
+    /// @notice Nominal date of scheduled rebalance k: scheduleStart + k * rebalancePeriod.
+    uint64 public immutable scheduleStart;
+    uint64 public immutable rebalancePeriod;
+    /// @notice A commitment must land at least this long before its window opens.
+    uint64 public immutable commitLead;
     /// @notice Max gap between the committed and the resulting weights: a guard against venue slippage.
     uint16 public immutable weightToleranceBps;
     /// @dev Constituent 0 is the settlement asset: sells go into it and buys are paid from it.
@@ -95,6 +115,7 @@ contract WhisprrVault is ReentrancyGuard, IReceiver {
         uint64 executionTolerance,
         uint16 weightToleranceBps
     );
+    event SchedulePublished(uint64 scheduleStart, uint64 rebalancePeriod, uint64 commitLead);
     event Committed(
         uint256 indexed epoch,
         bytes32 indexed commitment,
@@ -127,7 +148,6 @@ contract WhisprrVault is ReentrancyGuard, IReceiver {
     error BadFramework();
     error EpochOpen(uint256 epoch, Status status);
     error WrongStatus(Status expected, Status actual);
-    error WindowInPast();
     error SeedNotReady(uint64 seedBlock);
     error TooEarly(uint64 executeAt);
     error TooLate(uint64 deadline);
@@ -147,33 +167,35 @@ contract WhisprrVault is ReentrancyGuard, IReceiver {
         address chainlinkForwarder_,
         address[] memory constituents_,
         bytes32 frameworkHash_,
-        uint64 jitterBefore_,
-        uint64 jitterAfter_,
-        uint64 executionTolerance_,
+        Timing memory t,
         uint16 weightToleranceBps_
     ) {
         if (constituents_.length < 2 || constituents_.length > type(uint8).max) {
             revert BadFramework();
         }
-        if (executionTolerance_ == 0 || weightToleranceBps_ > BPS) revert BadFramework();
+        if (t.executionTolerance == 0 || weightToleranceBps_ > BPS) revert BadFramework();
         if (chainlinkForwarder_ == address(0)) revert BadFramework();
+        // A rebalance must be over (executed or defaultable) before the next one's commit deadline.
+        if (t.rebalancePeriod <= t.jitterBefore + t.jitterAfter + t.executionTolerance + t.commitLead) {
+            revert BadFramework();
+        }
+        if (t.scheduleStart < t.jitterBefore) revert BadFramework();
         operator = operator_;
         venue = venue_;
         chainlinkForwarder = chainlinkForwarder_;
         _constituents = constituents_;
         frameworkHash = frameworkHash_;
-        jitterBefore = jitterBefore_;
-        jitterAfter = jitterAfter_;
-        executionTolerance = executionTolerance_;
+        jitterBefore = t.jitterBefore;
+        jitterAfter = t.jitterAfter;
+        executionTolerance = t.executionTolerance;
         weightToleranceBps = weightToleranceBps_;
+        scheduleStart = t.scheduleStart;
+        rebalancePeriod = t.rebalancePeriod;
+        commitLead = t.commitLead;
         emit FrameworkPublished(
-            frameworkHash_,
-            constituents_,
-            jitterBefore_,
-            jitterAfter_,
-            executionTolerance_,
-            weightToleranceBps_
+            frameworkHash_, constituents_, t.jitterBefore, t.jitterAfter, t.executionTolerance, weightToleranceBps_
         );
+        emit SchedulePublished(t.scheduleStart, t.rebalancePeriod, t.commitLead);
     }
 
     // ------------------------------------------------------------------
@@ -192,6 +214,21 @@ contract WhisprrVault is ReentrancyGuard, IReceiver {
     /// calling this through a public RPC shows the preimage to that RPC's operator.
     function hashRebalance(uint256 epoch, uint16[] memory weights, bytes32 salt) public view returns (bytes32) {
         return keccak256(abi.encode(block.chainid, address(this), epoch, weights, salt));
+    }
+
+    /// @notice The next scheduled rebalance a commit made now would seal: the first slot whose
+    /// window opens at least commitLead from now.
+    function nextSlot()
+        public
+        view
+        returns (uint64 slot, uint64 nominal, uint64 windowStart, uint64 windowEnd, uint64 commitDeadline)
+    {
+        uint64 earliest = uint64(block.timestamp) + commitLead + jitterBefore; // earliest nominal allowed
+        if (earliest > scheduleStart) slot = (earliest - scheduleStart + rebalancePeriod - 1) / rebalancePeriod;
+        nominal = scheduleStart + slot * rebalancePeriod;
+        windowStart = nominal - jitterBefore;
+        windowEnd = nominal + jitterAfter;
+        commitDeadline = windowStart - commitLead;
     }
 
     /// @notice The execution time the salt and the recorded seed imply. Anyone can recompute it
@@ -251,14 +288,18 @@ contract WhisprrVault is ReentrancyGuard, IReceiver {
     // Lifecycle
     // ------------------------------------------------------------------
 
-    /// @notice Seal the next rebalance. Only the hash goes onchain.
-    function commit(bytes32 commitment, uint64 nominalTime) external onlyOperator returns (uint256 epoch) {
+    /// @notice Seal the next scheduled rebalance. Only the hash goes onchain; the date comes from
+    /// the schedule, not from the operator.
+    function commit(bytes32 commitment) external onlyOperator returns (uint256 epoch) {
         if (currentEpoch != 0) {
             Status s = epochs[currentEpoch].status;
-            if (s != Status.Executed && s != Status.Defaulted) revert EpochOpen(currentEpoch, s);
+            if (s == Status.Committed || s == Status.Seeded) {
+                if (block.timestamp <= lastExecutionTime(currentEpoch)) revert EpochOpen(currentEpoch, s);
+                epochs[currentEpoch].status = Status.Defaulted;
+                emit Defaulted(currentEpoch);
+            }
         }
-        uint64 windowStart = nominalTime > jitterBefore ? nominalTime - jitterBefore : 0;
-        if (windowStart <= block.timestamp) revert WindowInPast();
+        (, uint64 nominalTime, uint64 windowStart,,) = nextSlot();
 
         epoch = ++currentEpoch;
         uint64 seedBlock = uint64(block.number) + SEED_DELAY;

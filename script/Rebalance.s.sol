@@ -10,6 +10,7 @@ import {WhisprrVault} from "../src/WhisprrVault.sol";
 ///
 ///   forge script script/Rebalance.s.sol --sig "commit()" --rpc-url $MONAD_TESTNET_RPC --broadcast
 ///
+/// The date isn't the operator's to pick: the commit seals the next scheduled rebalance.
 /// commit() seals the target WEIGHTS (comma-separated bps, default 1000,4000,2000,3000) with a
 /// fresh salt and stores the sealed plan (hex of abi.encode(epoch, weights, salt)) in sealed/
 /// (gitignored). Only the hash is broadcast. Hand the sealed file to the CRE workflow with
@@ -41,17 +42,18 @@ contract Rebalance is Script {
         // Same encoding as WhisprrVault.hashRebalance, computed locally so the preimage never
         // leaves this machine before execution.
         bytes32 commitment = keccak256(abi.encode(block.chainid, address(vault), epoch, weights, salt));
-        uint64 nominal = uint64(block.timestamp + vm.envOr("NOMINAL_DELAY", vault.jitterBefore() + 60));
+        (, uint64 nominal,,, uint64 deadline) = vault.nextSlot();
 
         vm.writeFile(_sealedPath(vault, epoch), vm.toString(abi.encode(epoch, weights, salt)));
 
         vm.broadcast(pk);
-        vault.commit(commitment, nominal);
+        vault.commit(commitment);
 
         console.log("epoch     ", epoch);
         console.log("commitment");
         console.logBytes32(commitment);
-        console.log("nominal   ", nominal);
+        console.log("nominal   ", nominal, "(next scheduled date)");
+        console.log("deadline  ", deadline);
         console.log("sealed    ", _sealedPath(vault, epoch));
         console.log("next: node cre/whisprr-keeper/scripts/hand-over.mjs <sealed file>");
     }

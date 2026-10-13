@@ -24,6 +24,9 @@ contract WhisprrVaultTest is Test {
     uint64 constant JITTER_AFTER = 2 days;
     uint64 constant TOLERANCE = 60;
     bytes32 constant SALT = keccak256("salt");
+    uint64 constant PERIOD = 7 days;
+    uint64 constant LEAD = 1 hours;
+    uint64 scheduleStart;
 
     function setUp() public {
         vm.warp(1_760_000_000);
@@ -56,9 +59,7 @@ contract WhisprrVaultTest is Test {
             forwarder,
             cs,
             keccak256("methodology-v1"),
-            JITTER_BEFORE,
-            JITTER_AFTER,
-            TOLERANCE,
+            _timing(),
             50
         );
 
@@ -71,6 +72,11 @@ contract WhisprrVaultTest is Test {
 
     // ---- helpers ----
 
+    function _timing() internal returns (WhisprrVault.Timing memory) {
+        if (scheduleStart == 0) scheduleStart = uint64(block.timestamp + 7 days);
+        return WhisprrVault.Timing(JITTER_BEFORE, JITTER_AFTER, TOLERANCE, scheduleStart, PERIOD, LEAD);
+    }
+
     // Target 10 / 40 / 20 / 30.
     function _plan() internal pure returns (uint16[] memory w) {
         w = new uint16[](4);
@@ -81,10 +87,10 @@ contract WhisprrVaultTest is Test {
     }
 
     function _commit(uint16[] memory w, bytes32 salt) internal returns (uint64 nominal) {
-        nominal = uint64(block.timestamp + 7 days);
+        (, nominal,,,) = vault.nextSlot();
         bytes32 c = vault.hashRebalance(vault.currentEpoch() + 1, w, salt);
         vm.prank(operator);
-        vault.commit(c, nominal);
+        vault.commit(c);
     }
 
     function _commitPlan() internal returns (uint16[] memory w, uint64 nominal) {
@@ -151,7 +157,7 @@ contract WhisprrVaultTest is Test {
         _executeViaChainlink(w, SALT);
 
         vm.prank(operator);
-        assertEq(vault.commit(keccak256("next"), uint64(block.timestamp + 7 days)), 2);
+        assertEq(vault.commit(keccak256("next")), 2);
     }
 
     // ---- timing can't be chosen ----
@@ -292,7 +298,7 @@ contract WhisprrVaultTest is Test {
             MockRWA(cs[i]).mint(address(slippy), MockRWA(cs[i]).balanceOf(address(venue)));
         }
         vault = new WhisprrVault(
-            operator, IPriceVenue(address(slippy)), forwarder, cs, keccak256("m"), JITTER_BEFORE, JITTER_AFTER, TOLERANCE, 50
+            operator, IPriceVenue(address(slippy)), forwarder, cs, keccak256("m"), _timing(), 50
         );
         usdc.mint(address(vault), 250_000e6);
         tbill.mint(address(vault), 2_500e18);
@@ -368,19 +374,57 @@ contract WhisprrVaultTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(WhisprrVault.EpochOpen.selector, 1, WhisprrVault.Status.Committed)
         );
-        vault.commit(keccak256("x"), uint64(block.timestamp + 7 days));
+        vault.commit(keccak256("x"));
     }
 
     function test_revert_commitNotOperator() public {
         vm.prank(anyone);
         vm.expectRevert(WhisprrVault.NotOperator.selector);
-        vault.commit(keccak256("x"), uint64(block.timestamp + 7 days));
+        vault.commit(keccak256("x"));
     }
 
-    function test_revert_windowInPast() public {
+    // ---- schedule: the operator never picks the date ----
+
+    function test_commitTakesNextScheduledSlot() public {
+        (, uint64 nominal) = _commitPlan();
+        assertEq(nominal, scheduleStart);
+        (,,,, uint64 windowStart, uint64 windowEnd,,,,) = vault.epochs(1);
+        assertEq(windowStart, scheduleStart - JITTER_BEFORE);
+        assertEq(windowEnd, scheduleStart + JITTER_AFTER);
+    }
+
+    function test_commitPastDeadlineRollsToFollowingSlot() public {
+        vm.warp(scheduleStart - JITTER_BEFORE - LEAD + 1);
+        (uint64 slot, uint64 nominal,,,) = vault.nextSlot();
+        assertEq(slot, 1);
+        assertEq(nominal, scheduleStart + PERIOD);
+        vm.warp(scheduleStart - JITTER_BEFORE - LEAD);
+        (slot,,,,) = vault.nextSlot();
+        assertEq(slot, 0);
+    }
+
+    function test_commitFlagsExpiredRebalanceAsDefaulted() public {
+        (, uint64 nominal) = _commitPlan();
+        vm.warp(nominal + JITTER_AFTER + TOLERANCE + 1);
         vm.prank(operator);
-        vm.expectRevert(WhisprrVault.WindowInPast.selector);
-        vault.commit(keccak256("x"), uint64(block.timestamp + JITTER_BEFORE));
+        assertEq(vault.commit(keccak256("next")), 2);
+        assertEq(uint8(_status(1)), uint8(WhisprrVault.Status.Defaulted));
+        (,,,, uint64 windowStart,,,,,) = vault.epochs(2);
+        assertEq(windowStart, scheduleStart + PERIOD - JITTER_BEFORE);
+    }
+
+    function test_revert_scheduleTooTight() public {
+        address[] memory cs = vault.constituents();
+        vm.expectRevert(WhisprrVault.BadFramework.selector);
+        new WhisprrVault(
+            operator,
+            venue,
+            forwarder,
+            cs,
+            keccak256("m"),
+            WhisprrVault.Timing(JITTER_BEFORE, JITTER_AFTER, TOLERANCE, scheduleStart, 3 days, LEAD),
+            50
+        );
     }
 
     // ---- default ----
@@ -414,7 +458,7 @@ contract WhisprrVaultTest is Test {
         address[] memory cs = vault.constituents();
         vm.expectRevert(WhisprrVault.BadFramework.selector);
         new WhisprrVault(
-            operator, venue, address(0), cs, keccak256("m"), JITTER_BEFORE, JITTER_AFTER, TOLERANCE, 50
+            operator, venue, address(0), cs, keccak256("m"), _timing(), 50
         );
     }
 
@@ -425,9 +469,12 @@ contract WhisprrVaultTest is Test {
     }
 
     function testFuzz_executionTimeAlwaysInsideWindow(bytes32 salt, bytes32 seed, uint32 offset) public {
-        uint64 nominal = uint64(block.timestamp) + JITTER_BEFORE + 1 + offset;
+        vm.warp(block.timestamp + offset);
+        (, uint64 nominal,,,) = vault.nextSlot();
+        assertEq((nominal - scheduleStart) % PERIOD, 0);
+        assertGe(nominal - JITTER_BEFORE, block.timestamp + LEAD);
         vm.prank(operator);
-        vault.commit(keccak256("c"), nominal);
+        vault.commit(keccak256("c"));
         vm.roll(block.number + vault.SEED_DELAY() + 1);
         vm.setBlockhash(block.number - 1, seed == bytes32(0) ? bytes32(uint256(1)) : seed);
         vault.recordSeed();

@@ -18,11 +18,11 @@ Whisprr keeps **the framework public** and **the actionable detail sealed**:
 
 | Public from day one ([`docs/FRAMEWORK.md`](docs/FRAMEWORK.md), hash stored onchain) | Sealed until the moment of execution |
 |---|---|
-| The universe of constituents, the methodology class, the execution window around each nominal date, the timing formula, the executor (Chainlink), the tolerances, the operator | The target weights (and with them every trade), the salt, and with it the exact execution second |
+| The universe of constituents, the methodology class, **the rebalance schedule** (every nominal date), the execution window around each one, the timing formula, the executor (Chainlink), the tolerances, the operator | The target weights (and with them every trade), the salt, and with it the exact execution second |
 
 Each rebalance goes through four steps:
 
-1. **Commit (operator).** The operator posts `keccak256(abi.encode(chainid, vault, epoch, weights, salt))` and a nominal date, which fixes a public window `[nominal − jitterBefore, nominal + jitterAfter]`. The plan includes a random **salt**. The operator hands the sealed plan to the Chainlink CRE keeper workflow as a secret; it never touches the chain. **The operator's role ends here.**
+1. **Commit (operator).** Nominal dates are fixed at deployment (`scheduleStart + k × rebalancePeriod`; on testnet, every 5 minutes on the clock's 5-minute marks). The operator posts `keccak256(abi.encode(chainid, vault, epoch, weights, salt))`, which seals the **next scheduled** rebalance; it must land at least `commitLead` before that date's public window `[nominal − jitterBefore, nominal + jitterAfter]` opens. A date without a commitment passes, publicly. The plan includes a random **salt**. The operator hands the sealed plan to the Chainlink CRE keeper workflow as a secret; it never touches the chain. **The operator's role ends here.**
 2. **Seed (Monad).** Five blocks later, that block's hash is recorded onchain (by the keeper, or by anyone). From that moment the execution second is fixed:
 
    `executeAt = windowStart + keccak256(salt, seedHash) mod (window length + 1)`
@@ -33,7 +33,7 @@ Each rebalance goes through four steps:
 
 | Who | Can | Can't |
 |---|---|---|
-| Operator | Choose the target weights and the nominal date | Choose the execution second, execute, delay, or execute late |
+| Operator | Choose the target weights, and whether to rebalance on a scheduled date | Choose the date or the execution second, execute, delay, or execute late |
 | Chainlink keeper | Execute the committed plan at the sealed second | Execute a different plan (hash check) or at a different second (vault recomputes it) |
 | Market | See the window and the commitment | Learn the second, the weights or the trades before they happen |
 
@@ -47,12 +47,12 @@ Randomizing the date means filling at a slightly different price than the nomina
 
 | Contract | Address |
 |---|---|
-| `WhisprrVault` | [`0x5a4F4A97fDB6Aeb5f86ffEA11C1502EAD736fa57`](https://testnet.monadexplorer.com/address/0x5a4F4A97fDB6Aeb5f86ffEA11C1502EAD736fa57) |
+| `WhisprrVault` | [`0xb7630C8991389877a3AC42bd24D8637D4F59d62E`](https://testnet.monadexplorer.com/address/0xb7630C8991389877a3AC42bd24D8637D4F59d62E) (rebalances every 5 min) |
 | `OracleVenue` | [`0xb8E8C1C7B0431b6D69Dd20444E763ab1B1D1F051`](https://testnet.monadexplorer.com/address/0xb8E8C1C7B0431b6D69Dd20444E763ab1B1D1F051) |
 | mUSDC · mTBILL · mXAU · mSPY | [`0x5028…0dc5`](https://testnet.monadexplorer.com/address/0x502822f4238e792330Da841c192E194629B80dc5) · [`0x1B71…e608`](https://testnet.monadexplorer.com/address/0x1B71434Ae7e942568461D84eC6Ab065CE75ee608) · [`0x1A10…0F24`](https://testnet.monadexplorer.com/address/0x1A1093E67796c63745b447b8B138cBfB46BC0F24) · [`0xdF20…1989`](https://testnet.monadexplorer.com/address/0xdF2010a3c071236D50904AbD0c9a8DEA7b181989) |
 | Chainlink forwarder (Monad testnet, simulation) | [`0xB9F79d863261869B234c481D1f9A7af84AeAd192`](https://testnet.monadexplorer.com/address/0xB9F79d863261869B234c481D1f9A7af84AeAd192) |
 
-**Rebalance #1**, executed by the Chainlink keeper (25/25/25/25 → 10/40/20/30) while the price feed moved the market: mSPY $502.09 → $506.08 and mXAU $2,481.28 → $2,467.86 between commit and execution. The vault sized the trades at the execution second and landed on **10.00 / 39.99 / 20.00 / 29.99%**.
+On the previous vault ([`0x5a4F…fa57`](https://testnet.monadexplorer.com/address/0x5a4F4A97fDB6Aeb5f86ffEA11C1502EAD736fa57)), identical except that the operator picked each nominal date, **rebalance #1** was executed by the Chainlink keeper (25/25/25/25 → 10/40/20/30) while the price feed moved the market: mSPY $502.09 → $506.08 and mXAU $2,481.28 → $2,467.86 between commit and execution. The vault sized the trades at the execution second and landed on **10.00 / 39.99 / 20.00 / 29.99%**.
 
 | Step | Who | Transaction |
 |---|---|---|
@@ -60,7 +60,7 @@ Randomizing the date means filling at a slightly different price than the nomina
 | 2. Seed: Monad block hash recorded; the second is now fixed but sealed | Chainlink keeper | [`0x9a84be34…07c70590`](https://testnet.monadexplorer.com/tx/0x9a84be340105b347623373862f675150743266963c2715f07c8c1e0407c70590) |
 | 3. Reveal, size the trades at current prices and execute at the sealed second (+6 s) | Chainlink keeper | [`0x99b9041a…50e2a1e1`](https://testnet.monadexplorer.com/tx/0x99b9041a3621ebf2371b2d26b5eec33b8a09c805ec4e0b61710bd19850e2a1e1) |
 
-An earlier vault ([`0x1CD0…d08C`](https://testnet.monadexplorer.com/address/0x1CD04ce821C851Af7f28284E1f5FDBac9645d08C)) committed the trade list itself; it ran three rebalances, including one the keeper refused to execute late, publicly flagged **Defaulted**. It was replaced because fixed trades miss their targets once prices move.
+The first vault ([`0x1CD0…d08C`](https://testnet.monadexplorer.com/address/0x1CD04ce821C851Af7f28284E1f5FDBac9645d08C)) committed the trade list itself; it ran three rebalances, including one the keeper refused to execute late, publicly flagged **Defaulted**. It was replaced because fixed trades miss their targets once prices move.
 
 The deployment transactions are recorded in [`broadcast/Deploy.s.sol/10143/`](broadcast/Deploy.s.sol/10143). An earlier deployment ([`0x4Ad9…ab2A`](https://testnet.monadexplorer.com/address/0x4Ad9eE918aAAff5c00267af74A0590F5ED40ab2A)) used a previous design in which a Chainlink-drawn time was public after the draw and the operator submitted the execution; it was replaced so that neither the time nor the execution is in anyone's hands.
 
@@ -124,7 +124,7 @@ flowchart LR
 
 ```bash
 # contracts
-forge build && forge test            # 28 tests
+forge build && forge test            # 31 tests
 
 # deploy to Monad testnet (vault, venue, four RWAs, $1m seeded 25/25/25/25)
 cp .env.example .env                  # PRIVATE_KEY with testnet MON

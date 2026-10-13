@@ -56,6 +56,26 @@ export function executionTime(salt: Hex, seedHash: Hex, windowStart: bigint, win
   return windowStart + (seed % (windowEnd - windowStart + 1n));
 }
 
+export type Slot = { slot: bigint; nominal: bigint; windowStart: bigint; windowEnd: bigint; commitDeadline: bigint };
+
+/** The next scheduled rebalance a commit made at `now` would seal, as WhisprrVault.nextSlot. */
+export function nextSlot(
+  v: { scheduleStart: bigint; rebalancePeriod: bigint; commitLead: bigint; jitterBefore: bigint; jitterAfter: bigint },
+  now: bigint,
+): Slot {
+  const earliest = now + v.commitLead + v.jitterBefore;
+  const slot = earliest > v.scheduleStart ? (earliest - v.scheduleStart + v.rebalancePeriod - 1n) / v.rebalancePeriod : 0n;
+  const nominal = v.scheduleStart + slot * v.rebalancePeriod;
+  const windowStart = nominal - v.jitterBefore;
+  return { slot, nominal, windowStart, windowEnd: nominal + v.jitterAfter, commitDeadline: windowStart - v.commitLead };
+}
+
+/** "2:05" for a number of seconds. */
+export const fmtDuration = (s: bigint) => {
+  const n = Number(s < 0n ? 0n : s);
+  return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, "0")}`;
+};
+
 export const ZERO_HASH = `0x${"0".repeat(64)}` as Hex;
 
 export function randomSalt(): Hex {

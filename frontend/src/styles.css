@@ -94,6 +94,8 @@ h1 { margin: 0; font-size: 26px; letter-spacing: -0.02em; }
 .tl-exec span { color: var(--c2); top: -16px; }
 .tl-now { position: absolute; top: 16px; width: 12px; height: 12px; border-radius: 50%; background: var(--accent); transform: translateX(-6px); box-shadow: 0 0 0 3px var(--surface); transition: left 1s linear; }
 .note { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+.countdown { font-size: 15px; font-weight: 600; margin: 12px 0 0; color: var(--text, inherit); }
+.tl-ends { display: flex; justify-content: space-between; margin: 0 6px; }
 
 .actions { display: flex; gap: 10px; align-items: center; margin-top: 14px; flex-wrap: wrap; }
 button { font: inherit; font-weight: 500; padding: 8px 16px; border-radius: 8px; border: 0; background: var(--accent); color: var(--accent-ink); cursor: pointer; }

@@ -14,8 +14,11 @@ as `frameworkHash`, so the rules of the game can't change silently.
   holdings at the venue's prices, sells each overweight constituent into cash, then buys each
   underweight one with cash, so it lands on the target weights at the prices of that second.
   The sizing is a fixed formula: nobody chooses the trades.
-- **Rebalance trigger.** At most one open rebalance at a time. Each one is announced as a sealed
-  commitment with a nominal date.
+- **Schedule.** Nominal rebalance dates are fixed at deployment: `scheduleStart + k ×
+  rebalancePeriod`. The operator doesn't choose dates. A commitment seals the next scheduled
+  rebalance and must land at least `commitLead` before its window opens; a date without a
+  commitment passes without a rebalance, publicly. At most one rebalance is open at a time; an
+  expired one is flagged defaulted by the next commit.
 - **Timing.** Each rebalance executes at one second inside the public window
   `[nominal - jitterBefore, nominal + jitterAfter]`:
   `executeAt = windowStart + keccak256(salt, seedHash) mod (window length + 1)`, where `salt` is

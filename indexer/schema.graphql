@@ -7,6 +7,9 @@ type Vault {
   jitterBefore: BigInt!
   jitterAfter: BigInt!
   executionTolerance: BigInt!
+  scheduleStart: BigInt
+  rebalancePeriod: BigInt
+  commitLead: BigInt
   weightToleranceBps: Int!
   epochCount: Int!
   executedCount: Int!

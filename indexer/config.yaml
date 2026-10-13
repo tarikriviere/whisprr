@@ -6,11 +6,11 @@ field_selection:
   - hash
 chains:
 - id: 10143
-  start_block: 70738126
+  start_block: 70743800
   contracts:
   - name: WhisprrVault
     address:
-    - '0x5a4F4A97fDB6Aeb5f86ffEA11C1502EAD736fa57'
+    - '0xb7630C8991389877a3AC42bd24D8637D4F59d62E'
     events:
     - event: Committed(uint256 indexed epoch, bytes32 indexed commitment, uint64 windowStart, uint64 windowEnd, uint64 seedBlock)
     - event: Defaulted(uint256 indexed epoch)
@@ -18,4 +18,5 @@ chains:
     - event: SeedRecorded(uint256 indexed epoch, uint64 seedBlock, bytes32 seedHash)
     - event: Executed(uint256 indexed epoch, bytes32 indexed commitment, uint16[] weights, bytes32 salt, uint64 executeAt)
     - event: FrameworkPublished(bytes32 indexed frameworkHash, address[] constituents, uint64 jitterBefore, uint64 jitterAfter, uint64 executionTolerance, uint16 weightToleranceBps)
+    - event: SchedulePublished(uint64 scheduleStart, uint64 rebalancePeriod, uint64 commitLead)
     - event: TradeExecuted(uint256 indexed epoch, address indexed tokenIn, address indexed tokenOut, uint256 amountIn, uint256 amountOut)

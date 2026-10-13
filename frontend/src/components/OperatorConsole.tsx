@@ -5,15 +5,17 @@ import { chain } from "../chain";
 import { vaultAbi } from "../generated/contracts";
 import type { VaultState } from "../useVault";
 import { useTx } from "../useTx";
+import { useClock } from "../useClock";
 import {
-  downloadSealed, executionTime, fmtAmount, fmtTime, hashRebalance, loadSealed, parseSealed, planTrades, randomSalt,
-  saveSealed, short, type Sealed,
+  downloadSealed, executionTime, fmtAmount, fmtDuration, fmtTime, hashRebalance, loadSealed, nextSlot, parseSealed,
+  planTrades, randomSalt, saveSealed, short, type Sealed,
 } from "../whisprr";
 import { TxLine } from "./TxLine";
 
 export function OperatorConsole({ s, vault }: { s: VaultState; vault: Address }) {
   const e = s.epochs[0];
-  const open = e && (e.status === "Committed" || e.status === "Seeded");
+  // An open rebalance past its last execution time no longer blocks: the next commit flags it defaulted.
+  const open = e && (e.status === "Committed" || e.status === "Seeded") && s.now <= e.lastExecution;
   return (
     <section className="card operator">
       <div className="card-head">
@@ -27,9 +29,10 @@ export function OperatorConsole({ s, vault }: { s: VaultState; vault: Address })
 
 function CommitPanel({ s, vault }: { s: VaultState; vault: Address }) {
   const [pcts, setPcts] = useState(() => ["10", "40", "20", "30"].slice(0, s.constituents.length));
-  const [delay, setDelay] = useState(() => (s.jitterBefore + 60n).toString());
   const { writeContractAsync } = useWriteContract();
   const tx = useTx();
+  const clock = useClock();
+  const slot = nextSlot(s, clock);
 
   const weights = pcts.map((p) => Math.round(Number(p) * 100));
   const sum = weights.reduce((a, b) => a + b, 0);
@@ -45,7 +48,7 @@ function CommitPanel({ s, vault }: { s: VaultState; vault: Address }) {
     saveSealed(sealed);
     downloadSealed(sealed);
     await tx.run(() =>
-      writeContractAsync({ address: vault, abi: vaultAbi, functionName: "commit", args: [commitment, s.now + BigInt(delay)] }),
+      writeContractAsync({ address: vault, abi: vaultAbi, functionName: "commit", args: [commitment] }),
     );
   }
 
@@ -53,7 +56,10 @@ function CommitPanel({ s, vault }: { s: VaultState; vault: Address }) {
     <>
       <p className="muted">
         Set the target weights. Only their hash goes onchain. The preimage stays in this browser and in a downloaded file
-        until execution.
+        until execution. The date isn't yours to choose: this seals the next scheduled rebalance.
+      </p>
+      <p className="countdown mono">
+        Seals the {fmtTime(slot.nominal)} rebalance · commit within {fmtDuration(slot.commitDeadline - clock)}
       </p>
       <div className="weights-grid">
         {s.constituents.map((c, i) => (
@@ -64,11 +70,6 @@ function CommitPanel({ s, vault }: { s: VaultState; vault: Address }) {
             <span className="unit">%</span>
           </label>
         ))}
-        <label>
-          <span>Nominal in</span>
-          <input type="number" min={Number(s.jitterBefore) + 1} value={delay} onChange={(ev) => setDelay(ev.target.value)} />
-          <span className="unit">s</span>
-        </label>
       </div>
       {!valid && <p className="warn">Weights sum to {(sum / 100).toFixed(2)}%. They must sum to 100%.</p>}
       {valid && (
@@ -111,6 +112,7 @@ function SealedPanel({ s, vault }: { s: VaultState; vault: Address }) {
   const matches = sealed ? hashRebalance(sealed) === e.commitment : false;
   const seeded = e.status === "Seeded";
   const at = sealed && matches && seeded ? executionTime(sealed.salt, e.seedHash, e.windowStart, e.windowEnd) : undefined;
+  const clock = useClock();
 
   async function onFile(f: File | undefined) {
     if (!f) return;
@@ -126,9 +128,18 @@ function SealedPanel({ s, vault }: { s: VaultState; vault: Address }) {
 
   return (
     <>
+      {at !== undefined ? (
+        <p className="countdown mono">
+          Your private view: executes at {fmtTime(at)}
+          {clock < at ? ` · in ${fmtDuration(at - clock)}` : " · now"}
+        </p>
+      ) : (
+        sealed && matches && <p className="countdown mono">Waiting for the Monad seed: then the second is fixed</p>
+      )}
       <p className="muted">
         Rebalance #{e.id.toString()} is sealed. Your part is done: Chainlink executes it at the second its salt and the
-        seed block imply. There's no execute button, for anyone.
+        seed block imply. The market sees only the window and can't compute this second without the salt; you can't
+        change it. There's no execute button, for anyone.
       </p>
       {!sealed && (
         <label className="file">
@@ -142,19 +153,11 @@ function SealedPanel({ s, vault }: { s: VaultState; vault: Address }) {
           {matches ? "✓ Your sealed plan matches the onchain commitment" : `✗ Plan hashes to ${short(hashRebalance(sealed))}, not the commitment`}
         </p>
       )}
-      <h3>Hand the sealed plan to Chainlink</h3>
-      <pre className="cmd mono small">node cre/whisprr-keeper/scripts/hand-over.mjs whisprr-sealed-epoch-{e.id.toString()}.json{"\n"}cre/keeper.sh</pre>
       <p className="note">
-        The plan goes to the workflow's secrets, never onchain. The keeper records the seed, then executes at the sealed
-        second.
+        The sealed plan file saved to Downloads goes to the Chainlink workflow's secrets, never onchain: the keeper
+        (<span className="mono">WATCH_DIR=… cre/keeper.sh</span>) picks it up automatically. Manually:{" "}
+        <span className="mono">node cre/whisprr-keeper/scripts/hand-over.mjs whisprr-sealed-epoch-{e.id.toString()}.json</span>
       </p>
-      {at !== undefined && (
-        <p className="note">
-          Your private view: executes at <span className="mono">{fmtTime(at)}</span>
-          {s.now < at ? ` (in ${at - s.now}s)` : ""}. The market can't compute this without the salt, and you can't
-          change it.
-        </p>
-      )}
     </>
   );
 }

@@ -39,7 +39,19 @@ indexer.onEvent({ contract: "WhisprrVault", event: "FrameworkPublished" }, async
     defaultedCount: 0,
     verifiedCount: 0,
     onScheduleCount: 0,
+    scheduleStart: undefined,
+    rebalancePeriod: undefined,
+    commitLead: undefined,
   });
+});
+
+indexer.onEvent({ contract: "WhisprrVault", event: "SchedulePublished" }, async ({ event, context }) => {
+  const p = event.params;
+  await bumpVault(context, vaultId(event.chainId, event.srcAddress), () => ({
+    scheduleStart: p.scheduleStart,
+    rebalancePeriod: p.rebalancePeriod,
+    commitLead: p.commitLead,
+  }));
 });
 
 indexer.onEvent({ contract: "WhisprrVault", event: "Committed" }, async ({ event, context }) => {

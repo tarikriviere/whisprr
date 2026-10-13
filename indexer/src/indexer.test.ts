@@ -45,6 +45,10 @@ function lifecycle(revealSalt: Hex, executedOffset = 0) {
       },
     },
     {
+      contract: "WhisprrVault" as const, event: "SchedulePublished" as const, block: { number: B + 100 },
+      params: { scheduleStart: 1_160n, rebalancePeriod: 300n, commitLead: 60n },
+    },
+    {
       contract: "WhisprrVault" as const, event: "Committed" as const,
       block: { number: B + 110, timestamp: 1_000 }, transaction: { hash: "0xc0" },
       params: { epoch: 1n, commitment, windowStart: 1_100n, windowEnd: 1_280n, seedBlock: 115n },
@@ -75,6 +79,8 @@ describe("WhisprrVault indexing", () => {
     const e = await indexer.Epoch.getOrThrow(`${CHAIN}-${VAULT.toLowerCase()}-1`);
     const at = sealedAt(SALT);
     t.expect(e.status).toBe("Executed");
+    const vault = await indexer.Vault.getOrThrow(`${CHAIN}-${VAULT.toLowerCase()}`);
+    t.expect(vault.rebalancePeriod).toBe(300n);
     t.expect(e.nominalTime).toBe(1_160n); // windowStart + jitterBefore
     t.expect(e.seedHash).toBe(SEED);
     t.expect(e.executeAt).toBe(at);

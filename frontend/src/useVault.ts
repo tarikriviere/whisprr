@@ -12,6 +12,9 @@ export type VaultState = {
   jitterAfter: bigint;
   grace: bigint;
   tolerance: number;
+  scheduleStart: bigint;
+  rebalancePeriod: bigint;
+  commitLead: bigint;
   chainlinkForwarder: Address;
   constituents: Constituent[];
   total: bigint;
@@ -29,7 +32,7 @@ export function useVault(vault: Address | undefined) {
     refetchInterval: 2_000,
     queryFn: async (): Promise<VaultState> => {
       const c = { address: vault!, abi: vaultAbi } as const;
-      const [operator, venue, frameworkHash, jitterBefore, jitterAfter, grace, tolerance, chainlinkForwarder, addrs, current, weights, block] =
+      const [operator, venue, frameworkHash, jitterBefore, jitterAfter, grace, tolerance, chainlinkForwarder, addrs, current, weights, block, scheduleStart, rebalancePeriod, commitLead] =
         await Promise.all([
           client!.readContract({ ...c, functionName: "operator" }),
           client!.readContract({ ...c, functionName: "venue" }),
@@ -43,6 +46,9 @@ export function useVault(vault: Address | undefined) {
           client!.readContract({ ...c, functionName: "currentEpoch" }),
           client!.readContract({ ...c, functionName: "currentWeights" }),
           client!.getBlock(),
+          client!.readContract({ ...c, functionName: "scheduleStart" }),
+          client!.readContract({ ...c, functionName: "rebalancePeriod" }),
+          client!.readContract({ ...c, functionName: "commitLead" }),
         ]);
 
       const constituents = await Promise.all(
@@ -72,7 +78,7 @@ export function useVault(vault: Address | undefined) {
 
       return {
         operator, venue, frameworkHash, jitterBefore, jitterAfter, grace, tolerance, chainlinkForwarder,
-        constituents, total: constituents.reduce((a, x) => a + x.value, 0n), weights: [...weights],
+        scheduleStart, rebalancePeriod, commitLead, constituents, total: constituents.reduce((a, x) => a + x.value, 0n), weights: [...weights],
         epochs, now: block.timestamp, blockNumber: block.number,
       };
     },
