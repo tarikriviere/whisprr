@@ -91,7 +91,13 @@ export function EpochPanel({ s, vault, connected }: { s: VaultState; vault: Addr
         {e.status === "Executed" && (
           <div className="tl-mark tl-exec" style={{ left: `${pct(e.executeAt, e.windowStart, e.windowEnd)}%` }} title="Sealed execution second"><span>executed</span></div>
         )}
-        {open && <div className="tl-now" style={{ left: `${pct(clock, e.windowStart, e.windowEnd)}%` }} title="Now" />}
+        {/* Live only once the window opens: progress fills behind a pulsing "now" dot. */}
+        {open && clock >= e.windowStart && (
+          <>
+            <div className="tl-progress" style={{ width: `${pct(clock, e.windowStart, e.windowEnd)}%` }} />
+            <div className="tl-now" style={{ left: `${pct(clock, e.windowStart, e.windowEnd)}%` }} title="Now"><span>live</span></div>
+          </>
+        )}
       </div>
       <div className="tl-ends mono small muted"><span>{fmtTime(e.windowStart)}</span><span>{fmtTime(e.windowEnd)}</span></div>
       <p className="note">{note}</p>

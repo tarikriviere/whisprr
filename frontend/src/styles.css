@@ -92,7 +92,13 @@ h1 { margin: 0; font-size: 26px; letter-spacing: -0.02em; }
 .tl-nominal { background: var(--muted); }
 .tl-exec { background: var(--c2); width: 4px; transform: translateX(-2px); }
 .tl-exec span { color: var(--c2); top: -16px; }
+.tl-progress { position: absolute; top: 20px; left: 0; height: 4px; border-radius: 2px; background: var(--accent); opacity: 0.35; transition: width 1s linear; }
 .tl-now { position: absolute; top: 16px; width: 12px; height: 12px; border-radius: 50%; background: var(--accent); transform: translateX(-6px); box-shadow: 0 0 0 3px var(--surface); transition: left 1s linear; }
+.tl-now::before { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--accent); animation: tl-pulse 1.6s ease-out infinite; }
+.tl-now span { position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); animation: tl-blink 1.6s ease-in-out infinite; }
+@keyframes tl-pulse { from { transform: scale(1); opacity: 0.6; } to { transform: scale(3); opacity: 0; } }
+@keyframes tl-blink { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .tl-now::before, .tl-now span { animation: none; } }
 .note { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
 .countdown { font-size: 15px; font-weight: 600; margin: 12px 0 0; color: var(--text, inherit); }
 .tl-ends { display: flex; justify-content: space-between; margin: 0 6px; }
