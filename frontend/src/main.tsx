@@ -15,6 +15,14 @@ const wagmiConfig = createConfig({
   transports: { [chain.id]: http() },
 });
 const queryClient = new QueryClient();
+
+// Dynamic should only offer the chain the vault lives on. Prefer the dashboard's own entry for it
+// (when Monad Testnet is enabled there) and fall back to our definition. Module-level so the
+// callback is stable, as Dynamic requires.
+const evmNetworks = (dashboard: { chainId: number | string }[]) => {
+  const fromDashboard = dashboard.find((n) => Number(n.chainId) === chain.id);
+  return [(fromDashboard ?? dynamicNetwork) as typeof dynamicNetwork];
+};
 const environmentId = import.meta.env.VITE_DYNAMIC_ENV_ID as string | undefined;
 
 createRoot(document.getElementById("root")!).render(
@@ -24,7 +32,7 @@ createRoot(document.getElementById("root")!).render(
         settings={{
           environmentId,
           walletConnectors: [EthereumWalletConnectors],
-          overrides: { evmNetworks: [dynamicNetwork] },
+          overrides: { evmNetworks },
         }}
       >
         <WagmiProvider config={wagmiConfig}>
