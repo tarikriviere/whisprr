@@ -3,7 +3,7 @@ import type { Address } from "viem";
 import { vaultAbi } from "../generated/contracts";
 import type { VaultState } from "../useVault";
 import { useTx } from "../useTx";
-import { fmtTime, short } from "../whisper";
+import { fmtTime, short } from "../whisprr";
 import { TxLine } from "./TxLine";
 
 const pct = (t: bigint, a: bigint, b: bigint) => Math.min(100, Math.max(0, (Number(t - a) / Number(b - a || 1n)) * 100));

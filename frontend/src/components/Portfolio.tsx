@@ -1,5 +1,5 @@
 import type { VaultState } from "../useVault";
-import { fmtAmount, fmtBps, fmtUsd } from "../whisper";
+import { fmtAmount, fmtBps, fmtUsd } from "../whisprr";
 
 export function Portfolio({ s }: { s: VaultState }) {
   return (

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
-import {WhisperVault} from "../src/WhisperVault.sol";
+import {WhisprrVault} from "../src/WhisprrVault.sol";
 import {MockRWA} from "../src/mocks/MockRWA.sol";
 import {OracleVenue} from "../src/mocks/OracleVenue.sol";
 
@@ -45,7 +45,7 @@ contract Deploy is Script {
         cs[1] = address(tbill);
         cs[2] = address(gold);
         cs[3] = address(spy);
-        WhisperVault vault = new WhisperVault(
+        WhisprrVault vault = new WhisprrVault(
             deployer,
             venue,
             drawForwarder,
@@ -77,11 +77,11 @@ contract Deploy is Script {
 
         // Point the CRE workflow at the new vault.
         if (block.chainid == 10143) {
-            vm.writeJson(vm.toString(address(vault)), "cre/whisper-draw/config.staging.json", ".vaultAddress");
-            vm.writeJson(vm.toString(address(vault)), "cre/whisper-draw/config.production.json", ".vaultAddress");
+            vm.writeJson(vm.toString(address(vault)), "cre/whisprr-draw/config.staging.json", ".vaultAddress");
+            vm.writeJson(vm.toString(address(vault)), "cre/whisprr-draw/config.production.json", ".vaultAddress");
         }
 
-        console.log("WhisperVault:", address(vault));
+        console.log("WhisprrVault:", address(vault));
         console.log("OracleVenue: ", address(venue));
     }
 }

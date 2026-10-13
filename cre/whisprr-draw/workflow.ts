@@ -1,8 +1,8 @@
-// Whisper randomness workflow.
+// Whisprr randomness workflow.
 //
-// Every 30s, read WhisperVault.pendingDraw(). When a sealed rebalance is waiting for its
+// Every 30s, read WhisprrVault.pendingDraw(). When a sealed rebalance is waiting for its
 // execution time, produce a 256-bit random word and deliver it as a DON-signed report
-// abi.encode(uint256 epoch, uint256 randomWord) to WhisperVault.onReport via the forwarder.
+// abi.encode(uint256 epoch, uint256 randomWord) to WhisprrVault.onReport via the forwarder.
 // The vault mixes the word with the draw block's hash and the commitment, so the exact
 // execution time was unknowable to anyone at commit time, operator included.
 import { bytesToHex, cre, encodeCallMsg, getNetwork, prepareReportRequest, TxStatus, type Runtime } from "@chainlink/cre-sdk"
@@ -63,7 +63,7 @@ export const onCronTrigger = (runtime: Runtime<Config>): string => {
 		throw new Error(`Report tx failed: ${write.errorMessage || write.txStatus}`)
 	}
 	if (write.receiverContractExecutionStatus !== undefined && write.receiverContractExecutionStatus !== 0) {
-		throw new Error(`WhisperVault.onReport reverted (status ${write.receiverContractExecutionStatus})`)
+		throw new Error(`WhisprrVault.onReport reverted (status ${write.receiverContractExecutionStatus})`)
 	}
 	const txHash = bytesToHex(write.txHash || new Uint8Array(32))
 	runtime.log(`Epoch ${epoch}: execution time drawn. Tx ${txHash}`)

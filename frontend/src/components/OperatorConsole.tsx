@@ -8,7 +8,7 @@ import { useTx } from "../useTx";
 import {
   downloadSealed, fmtAmount, hashRebalance, loadSealed, parseSealed, planTrades, randomSalt, saveSealed, short,
   type Sealed,
-} from "../whisper";
+} from "../whisprr";
 import { TxLine } from "./TxLine";
 
 export function OperatorConsole({ s, vault }: { s: VaultState; vault: Address }) {
@@ -117,7 +117,7 @@ function ExecutePanel({ s, vault }: { s: VaultState; vault: Address }) {
       saveSealed(parsed);
       setFileErr("");
     } catch {
-      setFileErr("Not a Whisper sealed-preimage file.");
+      setFileErr("Not a Whisprr sealed-preimage file.");
     }
   }
 

@@ -8,7 +8,7 @@ import { EpochPanel } from "./components/EpochPanel";
 import { OperatorConsole } from "./components/OperatorConsole";
 import { History } from "./components/History";
 import { TrackRecord } from "./components/TrackRecord";
-import { short } from "./whisper";
+import { short } from "./whisprr";
 
 export function App() {
   const vault = deployments[String(chain.id)]?.vault;
@@ -21,7 +21,7 @@ export function App() {
     <div className="page">
       <header>
         <div className="brand">
-          <h1>Whisper</h1>
+          <h1>Whisprr</h1>
           <span className="tag">sealed-rebalance index · {chain.name}</span>
         </div>
         <DynamicWidget />

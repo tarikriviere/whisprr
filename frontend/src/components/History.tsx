@@ -4,7 +4,7 @@ import { usePublicClient } from "wagmi";
 import { chain, explorerTx } from "../chain";
 import { vaultAbi } from "../generated/contracts";
 import type { VaultState } from "../useVault";
-import { fmtBps, fmtTime, hashRebalance, short, type Epoch } from "../whisper";
+import { fmtBps, fmtTime, hashRebalance, short, type Epoch } from "../whisprr";
 
 export function History({ s, vault }: { s: VaultState; vault: Address }) {
   if (s.epochs.length === 0) return null;

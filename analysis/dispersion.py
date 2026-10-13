@@ -1,10 +1,10 @@
-"""Monte Carlo: what a transparent index loses to front-running vs. what Whisper's jitter costs.
+"""Monte Carlo: what a transparent index loses to front-running vs. what Whisprr's jitter costs.
 
 Transparent index: the rebalance date and trades are known in advance, so the traded names are
 bid up (additions) or pushed down (deletions) before the index trades, then revert. The index
 pays that premium on every traded dollar, every time: a one-directional drag.
 
-Whisper: the trades are sealed and the execution time is drawn at random inside
+Whisprr: the trades are sealed and the execution time is drawn at random inside
 [nominal - 1 day, nominal + 2 days], so nobody can pre-position. There's no premium, but the
 fill price is now taken at a random offset from the nominal date. That adds noise whose mean
 is zero: sometimes it helps, sometimes it hurts.
@@ -47,8 +47,8 @@ def per_rebalance(sims: int):
     transparent = -TURNOVER * rng.normal(PREMIUM_MEAN_BPS, PREMIUM_SD_BPS, sims)
     offset = rng.uniform(*JITTER_DAYS, sims)
     basket_sd = IDIO_VOL_DAILY_BPS * np.sqrt(np.abs(offset)) / np.sqrt(NAMES_TRADED)
-    whisper = TURNOVER * rng.normal(0.0, 1.0, sims) * basket_sd
-    return transparent, whisper
+    whisprr = TURNOVER * rng.normal(0.0, 1.0, sims) * basket_sd
+    return transparent, whisprr
 
 
 t1, w1 = per_rebalance(SIMS)
@@ -71,23 +71,23 @@ summary = {
     },
     "perRebalanceBps": {
         "transparent": {"mean": float(t1.mean()), "sd": float(t1.std()), "shareNegative": float((t1 < 0).mean())},
-        "whisper": {"mean": float(w1.mean()), "sd": float(w1.std()), "shareNegative": float((w1 < 0).mean())},
+        "whisprr": {"mean": float(w1.mean()), "sd": float(w1.std()), "shareNegative": float((w1 < 0).mean())},
     },
     "annualBps": {
         "transparentMean": float(t1.mean() * REBALANCES_PER_YEAR),
-        "whisperMean": float(w1.mean() * REBALANCES_PER_YEAR),
+        "whisprrMean": float(w1.mean() * REBALANCES_PER_YEAR),
     },
     "tenYearCumulativeBps": {
         "transparent": {"median": float(np.median(t_paths[:, -1])), "p5": float(np.percentile(t_paths[:, -1], 5)), "p95": float(np.percentile(t_paths[:, -1], 95))},
-        "whisper": {"median": float(np.median(w_paths[:, -1])), "p5": float(np.percentile(w_paths[:, -1], 5)), "p95": float(np.percentile(w_paths[:, -1], 95))},
+        "whisprr": {"median": float(np.median(w_paths[:, -1])), "p5": float(np.percentile(w_paths[:, -1], 5)), "p95": float(np.percentile(w_paths[:, -1], 95))},
     },
 }
 (OUT / "dispersion-summary.json").write_text(json.dumps(summary, indent=2) + "\n")
 
 # ---- chart ----
 THEMES = {
-    "light": dict(surface="#fcfcfb", text="#0b0b0b", text2="#52514e", grid="#e6e5e0", whisper="#2a78d6", transparent="#eb6834"),
-    "dark": dict(surface="#1a1a19", text="#f0efec", text2="#c3c2b7", grid="#33322f", whisper="#3987e5", transparent="#d95926"),
+    "light": dict(surface="#fcfcfb", text="#0b0b0b", text2="#52514e", grid="#e6e5e0", whisprr="#2a78d6", transparent="#eb6834"),
+    "dark": dict(surface="#1a1a19", text="#f0efec", text2="#c3c2b7", grid="#33322f", whisprr="#3987e5", transparent="#d95926"),
 }
 
 
@@ -110,7 +110,7 @@ def render(mode: str):
 
     # Panel A: per-rebalance distributions, step outlines (2px) so neither hides the other.
     bins = np.linspace(-20, 15, 141)
-    for data, key, label in ((t1, "transparent", "Transparent index"), (w1, "whisper", "Whisper")):
+    for data, key, label in ((t1, "transparent", "Transparent index"), (w1, "whisprr", "Whisprr")):
         h, edges = np.histogram(data, bins=bins, density=True)
         a.stairs(h, edges, color=c[key], linewidth=2)
         a.fill_between(edges[:-1], h, step="post", color=c[key], alpha=0.12, linewidth=0)
@@ -118,24 +118,24 @@ def render(mode: str):
     tm, wm = t1.mean(), w1.mean()
     top = a.get_ylim()[1]
     a.text(-19.5, top * 0.62, f"Transparent:\nalways a cost\nmean {tm:.1f} bps", color=c["text"], fontsize=9, va="center")
-    a.text(6.0, top * 0.62, f"Whisper:\ncentered on zero\nmean {abs(wm):.1f} bps", color=c["text"], fontsize=9, va="center")
+    a.text(6.0, top * 0.62, f"Whisprr:\ncentered on zero\nmean {abs(wm):.1f} bps", color=c["text"], fontsize=9, va="center")
     a.set_yticks([])
     a.spines["left"].set_visible(False)
     a.set_xlabel("Return vs. a frictionless fill, per rebalance (bps of NAV)")
     a.set_title("Per rebalance", loc="left", color=c["text"], fontsize=11, fontweight="bold")
 
-    # Panel B: cumulative over 10 years: transparent bleed vs. Whisper's zero-centered band.
+    # Panel B: cumulative over 10 years: transparent bleed vs. Whisprr's zero-centered band.
     t_med = np.median(t_paths, axis=0)
     w_lo, w_med, w_hi = np.percentile(w_paths, [5, 50, 95], axis=0)
     t_lo, t_hi = np.percentile(t_paths, [5, 95], axis=0)
-    b.fill_between(x_years, w_lo, w_hi, color=c["whisper"], alpha=0.16, linewidth=0)
+    b.fill_between(x_years, w_lo, w_hi, color=c["whisprr"], alpha=0.16, linewidth=0)
     b.fill_between(x_years, t_lo, t_hi, color=c["transparent"], alpha=0.16, linewidth=0)
-    b.plot(x_years, w_med, color=c["whisper"], linewidth=2)
+    b.plot(x_years, w_med, color=c["whisprr"], linewidth=2)
     b.plot(x_years, t_med, color=c["transparent"], linewidth=2)
     b.axhline(0, color=c["text2"], linewidth=1, linestyle=(0, (2, 2)))
     b.annotate(f"Transparent {t_med[-1]:.0f} bps", xy=(x_years[-1], t_med[-1]), xytext=(4, 0), textcoords="offset points",
                va="center", color=c["text"], fontsize=9)
-    b.annotate(f"Whisper {round(w_med[-1]) or 0:+d} bps\n(90% band {w_lo[-1]:+.0f} to {w_hi[-1]:+.0f})", xy=(x_years[-1], w_med[-1]),
+    b.annotate(f"Whisprr {round(w_med[-1]) or 0:+d} bps\n(90% band {w_lo[-1]:+.0f} to {w_hi[-1]:+.0f})", xy=(x_years[-1], w_med[-1]),
                xytext=(4, 0), textcoords="offset points", va="center", color=c["text"], fontsize=9)
     b.set_xlim(0, YEARS)
     b.set_xlabel("Years")
@@ -143,8 +143,8 @@ def render(mode: str):
     b.set_title("Compounded over 10 years (median, 5–95% band)", loc="left", color=c["text"], fontsize=11, fontweight="bold")
 
     # Legend (two series): shared, top-left of the figure.
-    handles = [plt.Line2D([], [], color=c["transparent"], linewidth=2), plt.Line2D([], [], color=c["whisper"], linewidth=2)]
-    fig.legend(handles, ["Transparent index (front-run)", "Whisper (sealed, randomized timing)"], loc="upper left",
+    handles = [plt.Line2D([], [], color=c["transparent"], linewidth=2), plt.Line2D([], [], color=c["whisprr"], linewidth=2)]
+    fig.legend(handles, ["Transparent index (front-run)", "Whisprr (sealed, randomized timing)"], loc="upper left",
                bbox_to_anchor=(0.06, 1.04), ncol=2, frameon=False, labelcolor=c["text"])
     fig.savefig(OUT / f"dispersion-{mode}.svg", bbox_inches="tight", facecolor=c["surface"], metadata={"Date": None})
     plt.close(fig)

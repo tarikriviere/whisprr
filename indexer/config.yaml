@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=./node_modules/envio/evm.schema.json
-name: whisper-indexer
+name: whisprr-indexer
 disable_default_cross_chain: true
 field_selection:
   transaction_fields:
@@ -8,7 +8,7 @@ chains:
 - id: 10143
   start_block: 0
   contracts:
-  - name: WhisperVault
+  - name: WhisprrVault
     address:
     - '0x0000000000000000000000000000000000000001'
     events:

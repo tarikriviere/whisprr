@@ -1,4 +1,4 @@
-# One row per WhisperVault: the public framework and running totals.
+# One row per WhisprrVault: the public framework and running totals.
 type Vault {
   id: ID! # chainId-address
   address: String!

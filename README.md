@@ -1,4 +1,4 @@
-# Whisper
+# Whisprr
 
 **An onchain index whose rebalances can't be front-run.** Monad Metropolis Hackathon, Track 01: Onchain Finance & Trading.
 
@@ -10,11 +10,11 @@ An index publishes its reconstitution rules and rebalances on a known date. Ever
 
 - **Dimensional** finds that index additions rise ~9 bps between the reconstitution announcement and the close as the index is forced to buy, then reverse ~13 bps afterwards. That round trip is paid by the index.
 - **Arnott et al. (via Alpha Architect)** estimate that trading ahead of index funds, or delaying reconstitution by 3–12 months, can add up to **23 bps a year**. Discretionary deletions beat additions by 22% on average in the year after changes.
-- **Greenwood, "The Disappearing Index Effect" (Harvard)** shows the effect has shrunk as markets adapted. Whisper doesn't depend on it staying large: it removes the predictability that creates it.
+- **Greenwood, "The Disappearing Index Effect" (Harvard)** shows the effect has shrunk as markets adapted. Whisprr doesn't depend on it staying large: it removes the predictability that creates it.
 
 ## The fix: seal the specifics, randomize the timing
 
-Whisper keeps **the framework public** and **the actionable detail sealed**:
+Whisprr keeps **the framework public** and **the actionable detail sealed**:
 
 | Public from day one ([`docs/FRAMEWORK.md`](docs/FRAMEWORK.md), hash stored onchain) | Sealed until the moment of execution |
 |---|---|
@@ -35,14 +35,14 @@ Randomizing the date means filling at a slightly different price than the nomina
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="analysis/dispersion-dark.svg">
-  <img alt="Two charts. Left: per-rebalance return distributions. The transparent index is a narrow spike around -4.4 bps, negative 99.99% of the time. Whisper is centered on zero. Right: cumulative over 10 years. The transparent index falls steadily to -176 bps, while Whisper's median stays at 0 with a 90% band of -45 to +46 bps." src="analysis/dispersion-light.svg">
+  <img alt="Two charts. Left: per-rebalance return distributions. The transparent index is a narrow spike around -4.4 bps, negative 99.99% of the time. Whisprr is centered on zero. Right: cumulative over 10 years. The transparent index falls steadily to -176 bps, while Whisprr's median stays at 0 with a 90% band of -45 to +46 bps." src="analysis/dispersion-light.svg">
 </picture>
 
-Monte Carlo, 100,000 rebalances ([`analysis/dispersion.py`](analysis/dispersion.py)). Assumptions: 4 rebalances a year, 20% turnover each, a front-running premium of 22 ± 6 bps on traded notional (Dimensional's run-up plus reversal), Whisper fills at a uniform offset of −1 to +2 days, 150 bps daily idiosyncratic volatility, 40 names per rebalance. Under those assumptions the transparent index loses **~17.6 bps a year**, in line with Arnott's 23 bps. Whisper's expected cost is **zero**.
+Monte Carlo, 100,000 rebalances ([`analysis/dispersion.py`](analysis/dispersion.py)). Assumptions: 4 rebalances a year, 20% turnover each, a front-running premium of 22 ± 6 bps on traded notional (Dimensional's run-up plus reversal), Whisprr fills at a uniform offset of −1 to +2 days, 150 bps daily idiosyncratic volatility, 40 names per rebalance. Under those assumptions the transparent index loses **~17.6 bps a year**, in line with Arnott's 23 bps. Whisprr's expected cost is **zero**.
 
 ## Why it has to be fully onchain
 
-A commit-reveal works even for an offchain index, but then it only proves *honesty of intent*. The buying and selling still happens where no one can see it. Whisper's moat is that the whole mechanism runs onchain:
+A commit-reveal works even for an offchain index, but then it only proves *honesty of intent*. The buying and selling still happens where no one can see it. Whisprr's moat is that the whole mechanism runs onchain:
 
 - the vault **holds** the constituents;
 - the rebalance **executes** as chain-enforced transactions against them;
@@ -62,11 +62,11 @@ flowchart LR
       UI[Frontend<br/>Dynamic wallet]
     end
     subgraph Monad testnet
-      V[WhisperVault<br/>holds mUSDC · mTBILL · mXAU · mSPY]
+      V[WhisprrVault<br/>holds mUSDC · mTBILL · mXAU · mSPY]
       X[OracleVenue<br/>RWA market stand-in]
       F[Chainlink forwarder]
     end
-    CRE[Chainlink CRE<br/>whisper-draw workflow]
+    CRE[Chainlink CRE<br/>whisprr-draw workflow]
     ENV[Envio HyperIndex<br/>Vault · Epoch · Trade]
 
     UI -- "1 commit(hash)" --> V
@@ -80,7 +80,7 @@ flowchart LR
 
 | Component | Path | Role |
 |---|---|---|
-| `WhisperVault` | [`src/WhisperVault.sol`](src/WhisperVault.sol) | Holds constituents; commit → draw → atomic reveal + execute; CRE receiver; default flagging |
+| `WhisprrVault` | [`src/WhisprrVault.sol`](src/WhisprrVault.sol) | Holds constituents; commit → draw → atomic reveal + execute; CRE receiver; default flagging |
 | `OracleVenue`, `MockRWA` | [`src/mocks/`](src/mocks) | Testnet RWA market and tokens (mUSDC cash, mTBILL, mXAU, mSPY) |
 | CRE workflow | [`cre/`](cre) | Cron every 30s → `pendingDraw()` → DON randomness → signed report to the vault |
 | Indexer | [`indexer/`](indexer) | Envio HyperIndex: one `Epoch` per rebalance with draw source, drawn offset from nominal, reveal, trades, and an independent `verified` re-hash |
@@ -89,7 +89,7 @@ flowchart LR
 
 ### Sponsor integrations
 
-- **Chainlink CRE.** The `whisper-draw` TypeScript workflow is the vault's randomness source. CRE's `Math.random()` is seeded per execution so every node agrees on the value. The vault accepts reports only from the configured forwarder, for the current epoch, once. It mixes in the draw block's hash so the DON's word alone doesn't decide the time, and opens the fallback only after a timeout, so the operator can't pick a source.
+- **Chainlink CRE.** The `whisprr-draw` TypeScript workflow is the vault's randomness source. CRE's `Math.random()` is seeded per execution so every node agrees on the value. The vault accepts reports only from the configured forwarder, for the current epoch, once. It mixes in the draw block's hash so the DON's word alone doesn't decide the time, and opens the fallback only after a timeout, so the operator can't pick a source.
 - **Envio.** HyperIndex turns raw events into the rebalance history the product is about: how long each rebalance stayed sealed, where the drawn time landed relative to nominal, which source drew it, and whether the reveal re-hashes to the commitment. The indexer computes that last check itself rather than trusting the contract.
 - **Dynamic.** Sign-in with embedded or external wallets, used for more than login. The connected wallet's role decides what you can do: the operator gets the sealing console, while anyone signed in can trigger the fallback draw or flag a default, and everyone can verify.
 
@@ -109,7 +109,7 @@ Deploying writes `deployments/10143.json` and points the CRE workflow's config a
 
 | What | Where |
 |---|---|
-| Randomness workflow | [`cre/README.md`](cre/README.md): `cre workflow simulate whisper-draw -T staging-settings --broadcast` |
+| Randomness workflow | [`cre/README.md`](cre/README.md): `cre workflow simulate whisprr-draw -T staging-settings --broadcast` |
 | Indexer | [`indexer/README.md`](indexer/README.md): `pnpm sync && pnpm dev` |
 | Frontend | `cd frontend && cp .env.example .env` (set `VITE_DYNAMIC_ENV_ID`) `&& npm install && npm run dev` |
 

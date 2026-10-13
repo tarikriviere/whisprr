@@ -28,36 +28,36 @@ function lifecycle(revealSalt: Hex) {
   const commitment = commitmentFor(1n, SALT);
   return [
     {
-      contract: "WhisperVault" as const, event: "FrameworkPublished" as const, block: { number: 100 },
+      contract: "WhisprrVault" as const, event: "FrameworkPublished" as const, block: { number: 100 },
       params: {
         frameworkHash: `0x${"11".repeat(32)}`, constituents: [VAULT, VAULT, VAULT, VAULT],
         jitterBefore: 60n, jitterAfter: 120n, executionGrace: 600n, weightToleranceBps: 50n,
       },
     },
     {
-      contract: "WhisperVault" as const, event: "Committed" as const,
+      contract: "WhisprrVault" as const, event: "Committed" as const,
       block: { number: 110, timestamp: 1_000 }, transaction: { hash: "0xc0" },
       params: { epoch: 1n, commitment, windowStart: 1_100n, windowEnd: 1_280n, drawBlock: 115n },
     },
     {
-      contract: "WhisperVault" as const, event: "ExecutionTimeDrawn" as const,
+      contract: "WhisprrVault" as const, event: "ExecutionTimeDrawn" as const,
       block: { number: 116, timestamp: 1_010 }, transaction: { hash: "0xd0" },
       params: { epoch: 1n, executeAt: 1_150n, seed: `0x${"22".repeat(32)}`, source: 2n },
     },
     ...trades.map((t) => ({
-      contract: "WhisperVault" as const, event: "TradeExecuted" as const,
+      contract: "WhisprrVault" as const, event: "TradeExecuted" as const,
       block: { number: 200, timestamp: 1_150 }, transaction: { hash: "0xe0" },
       params: { epoch: 1n, tokenIn: VAULT, tokenOut: VAULT, amountIn: t[2], amountOut: 1n },
     })),
     {
-      contract: "WhisperVault" as const, event: "Executed" as const,
+      contract: "WhisprrVault" as const, event: "Executed" as const,
       block: { number: 200, timestamp: 1_150 }, transaction: { hash: "0xe0" },
       params: { epoch: 1n, commitment, weights, trades, salt: revealSalt },
     },
   ];
 }
 
-describe("WhisperVault indexing", () => {
+describe("WhisprrVault indexing", () => {
   it("follows an epoch from commit to a verified reveal", async (t) => {
     const indexer = createTestIndexer();
     await indexer.process({ chains: { [CHAIN]: { simulate: lifecycle(SALT) } } });

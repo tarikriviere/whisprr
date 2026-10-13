@@ -45,7 +45,7 @@ const tradeTuple = {
   ],
 } as const;
 
-/** keccak256(abi.encode(chainid, vault, epoch, weights, trades, salt)), as WhisperVault.hashRebalance. */
+/** keccak256(abi.encode(chainid, vault, epoch, weights, trades, salt)), as WhisprrVault.hashRebalance. */
 export function hashRebalance(s: Omit<Sealed, "chainId"> & { chainId: number }): Hex {
   return keccak256(
     encodeAbiParameters(
@@ -86,7 +86,7 @@ export function planTrades(cs: Constituent[], weights: number[]): Trade[] {
 
 // ---- sealed preimage storage (this browser only) ----
 
-const key = (chainId: number, vault: Address, epoch: bigint) => `whisper:sealed:${chainId}:${vault.toLowerCase()}:${epoch}`;
+const key = (chainId: number, vault: Address, epoch: bigint) => `whisprr:sealed:${chainId}:${vault.toLowerCase()}:${epoch}`;
 
 export function serializeSealed(s: Sealed): string {
   return JSON.stringify(s, (_, v) => (typeof v === "bigint" ? `${v}n` : v), 2);
@@ -115,7 +115,7 @@ export function loadSealed(chainId: number, vault: Address, epoch: bigint): Seal
 
 export function downloadSealed(s: Sealed) {
   const url = URL.createObjectURL(new Blob([serializeSealed(s)], { type: "application/json" }));
-  const a = Object.assign(document.createElement("a"), { href: url, download: `whisper-sealed-epoch-${s.epoch}.json` });
+  const a = Object.assign(document.createElement("a"), { href: url, download: `whisprr-sealed-epoch-${s.epoch}.json` });
   a.click();
   URL.revokeObjectURL(url);
 }

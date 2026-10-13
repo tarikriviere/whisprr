@@ -9,7 +9,7 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IPriceVenue} from "./IPriceVenue.sol";
 import {IReceiver} from "./IReceiver.sol";
 
-/// @title WhisperVault
+/// @title WhisprrVault
 /// @notice An onchain index whose rebalances can't be front-run.
 ///
 /// The *framework* is public from deployment: the constituent universe, a hash of the
@@ -30,7 +30,7 @@ import {IReceiver} from "./IReceiver.sol";
 ///      resulting portfolio matches the committed weights. Reveal and execution are one atomic
 ///      transaction, so the instructions are never public before they've executed.
 ///   4. If the operator misses the grace period, anyone can call markDefaulted().
-contract WhisperVault is ReentrancyGuard, IReceiver {
+contract WhisprrVault is ReentrancyGuard, IReceiver {
     using SafeERC20 for IERC20;
 
     uint16 public constant BPS = 10_000;

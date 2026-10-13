@@ -1,10 +1,10 @@
-# whisper-draw: Chainlink CRE workflow
+# whisprr-draw: Chainlink CRE workflow
 
 Draws each sealed rebalance's execution time from DON-agreed randomness.
 
-Every 30 seconds the workflow calls `WhisperVault.pendingDraw()`. When an epoch's draw block has
+Every 30 seconds the workflow calls `WhisprrVault.pendingDraw()`. When an epoch's draw block has
 been mined and no time has been drawn yet, it produces a 256-bit random word and writes the
-DON-signed report `abi.encode(uint256 epoch, uint256 randomWord)` to `WhisperVault.onReport`
+DON-signed report `abi.encode(uint256 epoch, uint256 randomWord)` to `WhisprrVault.onReport`
 through the Chainlink forwarder.
 
 The vault:
@@ -18,10 +18,10 @@ The vault:
 
 ```bash
 cre login                                   # once
-cd cre/whisper-draw && bun install && cd ..
+cd cre/whisprr-draw && bun install && cd ..
 cp .env.example .env                        # CRE_ETH_PRIVATE_KEY: funded Monad testnet key, no 0x
 # deploying the vault on Monad testnet fills vaultAddress in config.*.json automatically
-cre workflow simulate whisper-draw -T staging-settings --broadcast
+cre workflow simulate whisprr-draw -T staging-settings --broadcast
 ```
 
 `simulate --broadcast` delivers the report through Monad testnet's simulation forwarder

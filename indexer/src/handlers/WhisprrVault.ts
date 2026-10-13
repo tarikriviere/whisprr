@@ -1,4 +1,4 @@
-// Turns WhisperVault events into one Epoch row per sealed rebalance, from commit to reveal,
+// Turns WhisprrVault events into one Epoch row per sealed rebalance, from commit to reveal,
 // and re-verifies every reveal against its commitment independently of the contract.
 import { indexer, type Epoch, type Vault } from "envio";
 import { encodeAbiParameters, getAddress, keccak256, type Hex } from "viem";
@@ -24,7 +24,7 @@ async function updateEpoch(context: any, id: string, patch: (e: Epoch) => Partia
   return next;
 }
 
-indexer.onEvent({ contract: "WhisperVault", event: "FrameworkPublished" }, async ({ event, context }) => {
+indexer.onEvent({ contract: "WhisprrVault", event: "FrameworkPublished" }, async ({ event, context }) => {
   const p = event.params;
   context.Vault.set({
     id: vaultId(event.chainId, event.srcAddress),
@@ -44,7 +44,7 @@ indexer.onEvent({ contract: "WhisperVault", event: "FrameworkPublished" }, async
   });
 });
 
-indexer.onEvent({ contract: "WhisperVault", event: "Committed"}, async ({ event, context }) => {
+indexer.onEvent({ contract: "WhisprrVault", event: "Committed"}, async ({ event, context }) => {
   const p = event.params;
   const vid = vaultId(event.chainId, event.srcAddress);
   const vault: Vault | undefined = await context.Vault.get(vid);
@@ -78,14 +78,14 @@ indexer.onEvent({ contract: "WhisperVault", event: "Committed"}, async ({ event,
   await bumpVault(context, vid, (v) => ({ epochCount: v.epochCount + 1 }));
 });
 
-indexer.onEvent({ contract: "WhisperVault", event: "DrawRearmed" }, async ({ event, context }) => {
+indexer.onEvent({ contract: "WhisprrVault", event: "DrawRearmed" }, async ({ event, context }) => {
   await updateEpoch(context, epochId(event.chainId, event.srcAddress, event.params.epoch), (e) => ({
     drawBlock: event.params.newDrawBlock,
     rearms: e.rearms + 1,
   }));
 });
 
-indexer.onEvent({ contract: "WhisperVault", event: "ExecutionTimeDrawn"}, async ({ event, context }) => {
+indexer.onEvent({ contract: "WhisprrVault", event: "ExecutionTimeDrawn"}, async ({ event, context }) => {
   const p = event.params;
   const source = DRAW_SOURCE[Number(p.source)] ?? "None";
   await updateEpoch(context, epochId(event.chainId, event.srcAddress, p.epoch), (e) => ({
@@ -101,7 +101,7 @@ indexer.onEvent({ contract: "WhisperVault", event: "ExecutionTimeDrawn"}, async 
   );
 });
 
-indexer.onEvent({ contract: "WhisperVault", event: "TradeExecuted"}, async ({ event, context }) => {
+indexer.onEvent({ contract: "WhisprrVault", event: "TradeExecuted"}, async ({ event, context }) => {
   const p = event.params;
   const eid = epochId(event.chainId, event.srcAddress, p.epoch);
   const e = await updateEpoch(context, eid, (e) => ({ tradeCount: e.tradeCount + 1 }));
@@ -128,11 +128,11 @@ const tradeTuple = {
   ],
 } as const;
 
-indexer.onEvent({ contract: "WhisperVault", event: "Executed"}, async ({ event, context }) => {
+indexer.onEvent({ contract: "WhisprrVault", event: "Executed"}, async ({ event, context }) => {
   const p = event.params;
   const weights = p.weights.map((w) => Number(w));
   const trades = p.trades.map((t) => ({ tokenIn: Number(t[0]), tokenOut: Number(t[1]), amountIn: t[2], minAmountOut: t[3] }));
-  // Same encoding as WhisperVault.hashRebalance: verify the reveal without trusting the contract.
+  // Same encoding as WhisprrVault.hashRebalance: verify the reveal without trusting the contract.
   const revealHash = keccak256(
     encodeAbiParameters(
       [{ type: "uint256" }, { type: "address" }, { type: "uint256" }, { type: "uint16[]" }, tradeTuple, { type: "bytes32" }],
@@ -157,7 +157,7 @@ indexer.onEvent({ contract: "WhisperVault", event: "Executed"}, async ({ event, 
   }));
 });
 
-indexer.onEvent({ contract: "WhisperVault", event: "Defaulted" }, async ({ event, context }) => {
+indexer.onEvent({ contract: "WhisprrVault", event: "Defaulted" }, async ({ event, context }) => {
   await updateEpoch(context, epochId(event.chainId, event.srcAddress, event.params.epoch), () => ({ status: "Defaulted" }));
   await bumpVault(context, vaultId(event.chainId, event.srcAddress), (v) => ({ defaultedCount: v.defaultedCount + 1 }));
 });

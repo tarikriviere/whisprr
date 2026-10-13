@@ -1,6 +1,6 @@
 import { explorerTx } from "../chain";
 import type { TxState } from "../useTx";
-import { short } from "../whisper";
+import { short } from "../whisprr";
 
 export function TxLine({ tx }: { tx: TxState }) {
   if (tx.status === "idle") return null;

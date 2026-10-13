@@ -1,4 +1,4 @@
-# Whisper Index: Public Framework v1
+# Whisprr Index: Public Framework v1
 
 This document is disclosed in the clear. Its keccak256 hash is stored in the vault at deployment
 as `frameworkHash`, so the rules of the game can't change silently.

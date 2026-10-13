@@ -1,6 +1,6 @@
-# whisper-indexer (Envio HyperIndex)
+# whisprr-indexer (Envio HyperIndex)
 
-Indexes WhisperVault on Monad testnet via HyperSync and serves it over GraphQL.
+Indexes WhisprrVault on Monad testnet via HyperSync and serves it over GraphQL.
 
 | Entity | What it holds |
 |---|---|

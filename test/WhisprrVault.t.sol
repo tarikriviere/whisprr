@@ -2,12 +2,12 @@
 pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
-import {WhisperVault} from "../src/WhisperVault.sol";
+import {WhisprrVault} from "../src/WhisprrVault.sol";
 import {IReceiver} from "../src/IReceiver.sol";
 import {MockRWA} from "../src/mocks/MockRWA.sol";
 import {OracleVenue} from "../src/mocks/OracleVenue.sol";
 
-contract WhisperVaultTest is Test {
+contract WhisprrVaultTest is Test {
     address operator = makeAddr("operator");
     address anyone = makeAddr("anyone");
     address forwarder = makeAddr("chainlinkForwarder");
@@ -17,7 +17,7 @@ contract WhisperVaultTest is Test {
     MockRWA gold;
     MockRWA spy;
     OracleVenue venue;
-    WhisperVault vault;
+    WhisprrVault vault;
 
     uint64 constant JITTER_BEFORE = 1 days;
     uint64 constant JITTER_AFTER = 2 days;
@@ -50,7 +50,7 @@ contract WhisperVaultTest is Test {
         cs[1] = address(tbill);
         cs[2] = address(gold);
         cs[3] = address(spy);
-        vault = new WhisperVault(
+        vault = new WhisprrVault(
             operator,
             venue,
             forwarder,
@@ -70,19 +70,19 @@ contract WhisperVaultTest is Test {
     }
 
     // Target 10 / 40 / 20 / 30.
-    function _plan() internal pure returns (uint16[] memory w, WhisperVault.Trade[] memory t) {
+    function _plan() internal pure returns (uint16[] memory w, WhisprrVault.Trade[] memory t) {
         w = new uint16[](4);
         w[0] = 1_000;
         w[1] = 4_000;
         w[2] = 2_000;
         w[3] = 3_000;
-        t = new WhisperVault.Trade[](2);
+        t = new WhisprrVault.Trade[](2);
         // Sell $50k gold -> $50k spy; sell $150k usdc -> $150k tbill.
-        t[0] = WhisperVault.Trade(2, 3, 20e18, 0);
-        t[1] = WhisperVault.Trade(0, 1, 150_000e6, 0);
+        t[0] = WhisprrVault.Trade(2, 3, 20e18, 0);
+        t[1] = WhisprrVault.Trade(0, 1, 150_000e6, 0);
     }
 
-    function _commit() internal returns (uint16[] memory w, WhisperVault.Trade[] memory t, uint64 nominal) {
+    function _commit() internal returns (uint16[] memory w, WhisprrVault.Trade[] memory t, uint64 nominal) {
         (w, t) = _plan();
         nominal = uint64(block.timestamp + 7 days);
         bytes32 c = vault.hashRebalance(1, w, t, SALT);
@@ -102,13 +102,13 @@ contract WhisperVaultTest is Test {
     function _status(uint256 epoch)
         internal
         view
-        returns (WhisperVault.Status s, WhisperVault.DrawSource src)
+        returns (WhisprrVault.Status s, WhisprrVault.DrawSource src)
     {
         (,,,,,,,, s, src) = vault.epochs(epoch);
     }
 
     function test_fullLoop() public {
-        (uint16[] memory w, WhisperVault.Trade[] memory t, uint64 nominal) = _commit();
+        (uint16[] memory w, WhisprrVault.Trade[] memory t, uint64 nominal) = _commit();
         uint64 executeAt = _draw();
         assertGe(executeAt, nominal - JITTER_BEFORE);
         assertLe(executeAt, nominal + JITTER_AFTER);
@@ -122,16 +122,16 @@ contract WhisperVaultTest is Test {
         assertApproxEqAbs(cw[1], 4_000, 1);
         assertApproxEqAbs(cw[2], 2_000, 1);
         assertApproxEqAbs(cw[3], 3_000, 1);
-        (,,,,,, uint64 executedAt, uint64 executedBlock, WhisperVault.Status s, WhisperVault.DrawSource src) =
+        (,,,,,, uint64 executedAt, uint64 executedBlock, WhisprrVault.Status s, WhisprrVault.DrawSource src) =
             vault.epochs(1);
-        assertEq(uint8(s), uint8(WhisperVault.Status.Executed));
+        assertEq(uint8(s), uint8(WhisprrVault.Status.Executed));
         assertEq(executedAt, executeAt);
         assertEq(executedBlock, block.number);
-        assertEq(uint8(src), uint8(WhisperVault.DrawSource.Chainlink));
+        assertEq(uint8(src), uint8(WhisprrVault.DrawSource.Chainlink));
     }
 
     function test_nextEpochAfterExecution() public {
-        (uint16[] memory w, WhisperVault.Trade[] memory t,) = _commit();
+        (uint16[] memory w, WhisprrVault.Trade[] memory t,) = _commit();
         vm.warp(_draw());
         vm.prank(operator);
         vault.execute(w, t, SALT);
@@ -144,20 +144,20 @@ contract WhisperVaultTest is Test {
         _commit();
         vm.prank(operator);
         vm.expectRevert(
-            abi.encodeWithSelector(WhisperVault.EpochOpen.selector, 1, WhisperVault.Status.Committed)
+            abi.encodeWithSelector(WhisprrVault.EpochOpen.selector, 1, WhisprrVault.Status.Committed)
         );
         vault.commit(keccak256("x"), uint64(block.timestamp + 7 days));
     }
 
     function test_revert_commitNotOperator() public {
         vm.prank(anyone);
-        vm.expectRevert(WhisperVault.NotOperator.selector);
+        vm.expectRevert(WhisprrVault.NotOperator.selector);
         vault.commit(keccak256("x"), uint64(block.timestamp + 7 days));
     }
 
     function test_revert_windowInPast() public {
         vm.prank(operator);
-        vm.expectRevert(WhisperVault.WindowInPast.selector);
+        vm.expectRevert(WhisprrVault.WindowInPast.selector);
         vault.commit(keccak256("x"), uint64(block.timestamp + JITTER_BEFORE));
     }
 
@@ -172,73 +172,73 @@ contract WhisperVaultTest is Test {
         vm.roll(block.number + 1_000);
         // Long past the CRE timeout, so the fallback is open, but the draw block's hash is gone.
         assertEq(vault.drawExecutionTime(), 0);
-        (,, uint64 drawBlock,,,,,, WhisperVault.Status s,) = vault.epochs(1);
+        (,, uint64 drawBlock,,,,,, WhisprrVault.Status s,) = vault.epochs(1);
         assertEq(drawBlock, block.number + vault.DRAW_DELAY());
-        assertEq(uint8(s), uint8(WhisperVault.Status.Committed));
+        assertEq(uint8(s), uint8(WhisprrVault.Status.Committed));
     }
 
     function test_revert_executeBeforeDraw() public {
-        (uint16[] memory w, WhisperVault.Trade[] memory t,) = _commit();
+        (uint16[] memory w, WhisprrVault.Trade[] memory t,) = _commit();
         vm.prank(operator);
         vm.expectRevert(
             abi.encodeWithSelector(
-                WhisperVault.WrongStatus.selector, WhisperVault.Status.Drawn, WhisperVault.Status.Committed
+                WhisprrVault.WrongStatus.selector, WhisprrVault.Status.Drawn, WhisprrVault.Status.Committed
             )
         );
         vault.execute(w, t, SALT);
     }
 
     function test_revert_executeTooEarly() public {
-        (uint16[] memory w, WhisperVault.Trade[] memory t,) = _commit();
+        (uint16[] memory w, WhisprrVault.Trade[] memory t,) = _commit();
         uint64 executeAt = _draw();
         vm.warp(executeAt - 1);
         vm.prank(operator);
-        vm.expectRevert(abi.encodeWithSelector(WhisperVault.TooEarly.selector, executeAt));
+        vm.expectRevert(abi.encodeWithSelector(WhisprrVault.TooEarly.selector, executeAt));
         vault.execute(w, t, SALT);
     }
 
     function test_revert_executeTooLate_thenDefault() public {
-        (uint16[] memory w, WhisperVault.Trade[] memory t,) = _commit();
+        (uint16[] memory w, WhisprrVault.Trade[] memory t,) = _commit();
         uint64 executeAt = _draw();
         vm.warp(executeAt + GRACE + 1);
         vm.prank(operator);
-        vm.expectRevert(abi.encodeWithSelector(WhisperVault.TooLate.selector, executeAt + GRACE));
+        vm.expectRevert(abi.encodeWithSelector(WhisprrVault.TooLate.selector, executeAt + GRACE));
         vault.execute(w, t, SALT);
 
         vm.prank(anyone);
         vault.markDefaulted();
-        (,,,,,,,, WhisperVault.Status s,) = vault.epochs(1);
-        assertEq(uint8(s), uint8(WhisperVault.Status.Defaulted));
+        (,,,,,,,, WhisprrVault.Status s,) = vault.epochs(1);
+        assertEq(uint8(s), uint8(WhisprrVault.Status.Defaulted));
     }
 
     function test_revert_markDefaultedEarly() public {
         _commit();
         uint64 executeAt = _draw();
         vm.warp(executeAt);
-        vm.expectRevert(abi.encodeWithSelector(WhisperVault.StillExecutable.selector, executeAt + GRACE));
+        vm.expectRevert(abi.encodeWithSelector(WhisprrVault.StillExecutable.selector, executeAt + GRACE));
         vault.markDefaulted();
     }
 
     function test_revert_wrongSalt() public {
-        (uint16[] memory w, WhisperVault.Trade[] memory t,) = _commit();
+        (uint16[] memory w, WhisprrVault.Trade[] memory t,) = _commit();
         vm.warp(_draw());
         vm.prank(operator);
-        vm.expectPartialRevert(WhisperVault.CommitmentMismatch.selector);
+        vm.expectPartialRevert(WhisprrVault.CommitmentMismatch.selector);
         vault.execute(w, t, keccak256("wrong"));
     }
 
     function test_revert_tamperedTrade() public {
-        (uint16[] memory w, WhisperVault.Trade[] memory t,) = _commit();
+        (uint16[] memory w, WhisprrVault.Trade[] memory t,) = _commit();
         vm.warp(_draw());
         t[0].amountIn = 21e18;
         vm.prank(operator);
-        vm.expectPartialRevert(WhisperVault.CommitmentMismatch.selector);
+        vm.expectPartialRevert(WhisprrVault.CommitmentMismatch.selector);
         vault.execute(w, t, SALT);
     }
 
     function test_revert_tradesDontReachCommittedWeights() public {
         // Commit to weights the trades don't produce: the vault refuses to call it honest.
-        (uint16[] memory w, WhisperVault.Trade[] memory t) = _plan();
+        (uint16[] memory w, WhisprrVault.Trade[] memory t) = _plan();
         w[0] = 2_000;
         w[1] = 3_000;
         bytes32 c = vault.hashRebalance(1, w, t, SALT);
@@ -246,15 +246,15 @@ contract WhisperVaultTest is Test {
         vault.commit(c, uint64(block.timestamp + 7 days));
         vm.warp(_draw());
         vm.prank(operator);
-        vm.expectPartialRevert(WhisperVault.WeightOutOfTolerance.selector);
+        vm.expectPartialRevert(WhisprrVault.WeightOutOfTolerance.selector);
         vault.execute(w, t, SALT);
     }
 
     function test_revert_executeNotOperator() public {
-        (uint16[] memory w, WhisperVault.Trade[] memory t,) = _commit();
+        (uint16[] memory w, WhisprrVault.Trade[] memory t,) = _commit();
         vm.warp(_draw());
         vm.prank(anyone);
-        vm.expectRevert(WhisperVault.NotOperator.selector);
+        vm.expectRevert(WhisprrVault.NotOperator.selector);
         vault.execute(w, t, SALT);
     }
 
@@ -284,7 +284,7 @@ contract WhisperVaultTest is Test {
         _commit();
         vm.roll(block.number + vault.DRAW_DELAY() + 1);
         vm.prank(anyone);
-        vm.expectRevert(abi.encodeWithSelector(WhisperVault.NotForwarder.selector, anyone));
+        vm.expectRevert(abi.encodeWithSelector(WhisprrVault.NotForwarder.selector, anyone));
         vault.onReport("", abi.encode(uint256(1), uint256(42)));
     }
 
@@ -292,14 +292,14 @@ contract WhisperVaultTest is Test {
         _commit();
         vm.roll(block.number + vault.DRAW_DELAY() + 1);
         vm.prank(forwarder);
-        vm.expectRevert(abi.encodeWithSelector(WhisperVault.StaleReport.selector, 7, 1));
+        vm.expectRevert(abi.encodeWithSelector(WhisprrVault.StaleReport.selector, 7, 1));
         vault.onReport("", abi.encode(uint256(7), uint256(42)));
     }
 
     function test_cre_notBeforeDrawBlock() public {
         _commit();
         vm.prank(forwarder);
-        vm.expectPartialRevert(WhisperVault.DrawNotReady.selector);
+        vm.expectPartialRevert(WhisprrVault.DrawNotReady.selector);
         vault.onReport("", abi.encode(uint256(1), uint256(42)));
     }
 
@@ -309,7 +309,7 @@ contract WhisperVaultTest is Test {
         vm.prank(forwarder);
         vm.expectRevert(
             abi.encodeWithSelector(
-                WhisperVault.WrongStatus.selector, WhisperVault.Status.Committed, WhisperVault.Status.Drawn
+                WhisprrVault.WrongStatus.selector, WhisprrVault.Status.Committed, WhisprrVault.Status.Drawn
             )
         );
         vault.onReport("", abi.encode(uint256(1), uint256(43)));
@@ -354,7 +354,7 @@ contract WhisperVaultTest is Test {
         _commit();
         vm.roll(block.number + vault.DRAW_DELAY() + 1);
         vm.expectRevert(
-            abi.encodeWithSelector(WhisperVault.AwaitingChainlink.selector, vault.fallbackDrawBlock(1))
+            abi.encodeWithSelector(WhisprrVault.AwaitingChainlink.selector, vault.fallbackDrawBlock(1))
         );
         vault.drawExecutionTime();
     }
@@ -364,21 +364,21 @@ contract WhisperVaultTest is Test {
         vm.roll(vault.fallbackDrawBlock(1) + 1);
         vm.prank(anyone);
         assertGt(vault.drawExecutionTime(), 0);
-        (WhisperVault.Status s, WhisperVault.DrawSource src) = _status(1);
-        assertEq(uint8(s), uint8(WhisperVault.Status.Drawn));
-        assertEq(uint8(src), uint8(WhisperVault.DrawSource.BlockHash));
+        (WhisprrVault.Status s, WhisprrVault.DrawSource src) = _status(1);
+        assertEq(uint8(s), uint8(WhisprrVault.Status.Drawn));
+        assertEq(uint8(src), uint8(WhisprrVault.DrawSource.BlockHash));
     }
 
     function test_creDisabled_fallbackImmediate_reportRejected() public {
         address[] memory cs = vault.constituents();
-        WhisperVault v2 = new WhisperVault(
+        WhisprrVault v2 = new WhisprrVault(
             operator, venue, address(0), cs, keccak256("m"), JITTER_BEFORE, JITTER_AFTER, GRACE, 50
         );
         vm.prank(operator);
         v2.commit(keccak256("c"), uint64(block.timestamp + 7 days));
         vm.roll(block.number + v2.DRAW_DELAY() + 1);
         vm.prank(forwarder);
-        vm.expectRevert(abi.encodeWithSelector(WhisperVault.NotForwarder.selector, forwarder));
+        vm.expectRevert(abi.encodeWithSelector(WhisprrVault.NotForwarder.selector, forwarder));
         v2.onReport("", abi.encode(uint256(1), uint256(42)));
         assertGt(v2.drawExecutionTime(), 0);
     }

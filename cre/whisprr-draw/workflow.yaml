@@ -1,6 +1,6 @@
 staging-settings:
   user-workflow:
-    workflow-name: "whisper-draw-staging"
+    workflow-name: "whisprr-draw-staging"
   workflow-artifacts:
     workflow-path: "./main.ts"
     config-path: "./config.staging.json"
@@ -8,7 +8,7 @@ staging-settings:
 
 production-settings:
   user-workflow:
-    workflow-name: "whisper-draw-production"
+    workflow-name: "whisprr-draw-production"
   workflow-artifacts:
     workflow-path: "./main.ts"
     config-path: "./config.production.json"

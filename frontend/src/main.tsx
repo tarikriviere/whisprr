@@ -37,7 +37,7 @@ createRoot(document.getElementById("root")!).render(
       </DynamicContextProvider>
     ) : (
       <div className="setup">
-        <h1>Whisper</h1>
+        <h1>Whisprr</h1>
         <p>
           Set <code>VITE_DYNAMIC_ENV_ID</code> in <code>frontend/.env</code> (Dynamic dashboard → Developers → SDK &amp; API
           Keys), then restart <code>npm run dev</code>.

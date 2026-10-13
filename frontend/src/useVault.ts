@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { erc20Abi, type Address, type Hex } from "viem";
 import { usePublicClient } from "wagmi";
 import { vaultAbi, venueAbi } from "./generated/contracts";
-import { DRAW_SOURCE, STATUS, type Constituent, type Epoch } from "./whisper";
+import { DRAW_SOURCE, STATUS, type Constituent, type Epoch } from "./whisprr";
 
 export type VaultState = {
   operator: Address;

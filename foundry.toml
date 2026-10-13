@@ -10,7 +10,7 @@ fs_permissions = [
   { access = "read-write", path = "./deployments" },
   { access = "read-write", path = "./sealed" },
   { access = "read", path = "./docs" },
-  { access = "read-write", path = "./cre/whisper-draw" },
+  { access = "read-write", path = "./cre/whisprr-draw" },
 ]
 remappings = [
   "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",

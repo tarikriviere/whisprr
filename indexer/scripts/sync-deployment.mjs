@@ -1,4 +1,4 @@
-// Points config.yaml at the WhisperVault in ../deployments/<chain>.json and starts indexing from
+// Points config.yaml at the WhisprrVault in ../deployments/<chain>.json and starts indexing from
 // its deployment block (read from Foundry's broadcast receipts).
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 
