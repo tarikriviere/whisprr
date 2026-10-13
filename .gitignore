@@ -5,4 +5,3 @@ broadcast/*/31337/
 node_modules/
 sealed/
 deployments/31337.json
-analysis/.venv/

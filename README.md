@@ -41,14 +41,7 @@ There's no ZK here. A hash commitment is the right primitive: the plan only need
 
 ### The jitter isn't a cost
 
-Randomizing the date means filling at a slightly different price than the nominal date would have given. That difference is **zero-mean noise**: as likely to help as to hurt. Front-running drag is **one-directional**: it bleeds against the index on every rebalance.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="analysis/dispersion-dark.svg">
-  <img alt="Two charts. Left: per-rebalance return distributions. The transparent index is a narrow spike around -4.4 bps, negative 99.99% of the time. Whisprr is centered on zero. Right: cumulative over 10 years. The transparent index falls steadily to -176 bps, while Whisprr's median stays at 0 with a 90% band of -45 to +46 bps." src="analysis/dispersion-light.svg">
-</picture>
-
-Monte Carlo, 100,000 rebalances ([`analysis/dispersion.py`](analysis/dispersion.py)). Assumptions: 4 rebalances a year, 20% turnover each, a front-running premium of 22 ± 6 bps on traded notional (Dimensional's run-up plus reversal), Whisprr fills at a uniform offset of −1 to +2 days, 150 bps daily idiosyncratic volatility, 40 names per rebalance. Under those assumptions the transparent index loses **~17.6 bps a year**, in line with Arnott's 23 bps. Whisprr's expected cost is **zero**.
+Randomizing the date means filling at a slightly different price than the nominal date would have given. That difference is **zero-mean noise**: as likely to help as to hurt. Front-running drag is **one-directional**: research on index rebalances (Dimensional; Arnott et al.) puts it at roughly 20 bps per traded dollar, around 23 bps a year for a cap-weighted index, lost on every rebalance. Whisprr trades a predictable leak for noise that averages out.
 
 ## Live on Monad testnet
 
@@ -122,7 +115,6 @@ flowchart LR
 | Keeper workflow | [`cre/`](cre) | Every 30 s: record the seed when due; compute the sealed second from the secret plan; execute at it |
 | Indexer | [`indexer/`](indexer) | Envio HyperIndex: one `Epoch` per rebalance with seed, sealed second, offset from nominal, reveal, trades, and independent `verified` (hash) and `onSchedule` (timing) checks |
 | Frontend | [`frontend/`](frontend) | Vite + React + Dynamic: live vault, window timeline, operator console (commit only), in-browser verification of hash and timing |
-| Analysis | [`analysis/`](analysis) | Monte Carlo behind the chart above |
 
 ### Sponsor integrations
 
@@ -179,7 +171,7 @@ cre/keeper.sh                                                                   
 
 This project was built with AI coding assistance, as required by the hackathon rules:
 
-- **Claude Code** (Anthropic CLI agent, model: Claude Opus 5.5): scaffolding, Solidity contracts, tests, deploy scripts, the Chainlink CRE workflow, the Envio indexer, the React/Dynamic frontend, the Monte Carlo analysis and documentation, under the author's direction and review.
+- **Claude Code** (Anthropic CLI agent, model: Claude Opus 5.5): scaffolding, Solidity contracts, tests, deploy scripts, the Chainlink CRE workflow, the Envio indexer, the React/Dynamic frontend and documentation, under the author's direction and review.
 - **Claude** (claude.ai): design discussion and the build plan.
 
 All code was written during the hackathon window.
