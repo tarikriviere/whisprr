@@ -18,11 +18,11 @@ Whisprr keeps **the framework public** and **the actionable detail sealed**:
 
 | Public from day one ([`docs/FRAMEWORK.md`](docs/FRAMEWORK.md), hash stored onchain) | Sealed until the moment of execution |
 |---|---|
-| The universe of constituents, the methodology class, **the rebalance schedule** (every nominal date), the execution window around each one, the timing formula, the executor (Chainlink), the tolerances, the operator | The target weights (and with them every trade), the salt, and with it the exact execution second |
+| The universe of constituents, the methodology class, **the rebalance schedule** (every anchor time), the execution window around each one, the timing formula, the executor (Chainlink), the tolerances, the operator | The target weights (and with them every trade), the salt, and with it the exact execution second |
 
 Each rebalance goes through four steps:
 
-1. **Commit (operator).** Nominal dates are fixed at deployment (`scheduleStart + k × rebalancePeriod`; on testnet, every 5 minutes on the clock's 5-minute marks). The operator posts `keccak256(abi.encode(chainid, vault, epoch, weights, salt))`, which seals the **next scheduled** rebalance; it must land at least `commitLead` before that date's public window `[nominal − jitterBefore, nominal + jitterAfter]` opens. A date without a commitment passes, publicly. The plan includes a random **salt**. The operator hands the sealed plan to the Chainlink CRE keeper workflow as a secret; it never touches the chain. **The operator's role ends here.**
+1. **Commit (operator).** Each rebalance has an **anchor**: a scheduled time fixed at deployment (`scheduleStart + k × rebalancePeriod`; on testnet, every 5 minutes on the clock's 5-minute marks). The operator posts `keccak256(abi.encode(chainid, vault, epoch, weights, salt))`, which seals the **next scheduled** rebalance; it must land at least `commitLead` before that anchor's public window `[anchor − jitterBefore, anchor + jitterAfter]` opens (on testnet, 30 s before to 45 s after). An anchor without a commitment passes, publicly. The plan includes a random **salt**. The operator hands the sealed plan to the Chainlink CRE keeper workflow as a secret; it never touches the chain. **The operator's role ends here.**
 2. **Seed (Monad).** Five blocks later, that block's hash is recorded onchain (by the keeper, or by anyone). From that moment the execution second is fixed:
 
    `executeAt = windowStart + keccak256(salt, seedHash) mod (window length + 1)`
@@ -41,18 +41,18 @@ There's no ZK here. A hash commitment is the right primitive: the plan only need
 
 ### The jitter isn't a cost
 
-Randomizing the date means filling at a slightly different price than the nominal date would have given. That difference is **zero-mean noise**: as likely to help as to hurt. Front-running drag is **one-directional**: research on index rebalances (Dimensional; Arnott et al.) puts it at roughly 20 bps per traded dollar, around 23 bps a year for a cap-weighted index, lost on every rebalance. Whisprr trades a predictable leak for noise that averages out.
+Randomizing the date means filling at a slightly different price than the anchor would have given. That difference is **zero-mean noise**: as likely to help as to hurt. Front-running drag is **one-directional**: research on index rebalances (Dimensional; Arnott et al.) puts it at roughly 20 bps per traded dollar, around 23 bps a year for a cap-weighted index, lost on every rebalance. Whisprr trades a predictable leak for noise that averages out.
 
 ## Live on Monad testnet
 
 | Contract | Address |
 |---|---|
-| `WhisprrVault` | [`0xb7630C8991389877a3AC42bd24D8637D4F59d62E`](https://testnet.monadexplorer.com/address/0xb7630C8991389877a3AC42bd24D8637D4F59d62E) (rebalances every 5 min) |
+| `WhisprrVault` | [`0xcdFD19F994648E31894131e444449E820F022134`](https://testnet.monadexplorer.com/address/0xcdFD19F994648E31894131e444449E820F022134) (rebalances every 5 min, window −30 s / +45 s) |
 | `OracleVenue` | [`0xb8E8C1C7B0431b6D69Dd20444E763ab1B1D1F051`](https://testnet.monadexplorer.com/address/0xb8E8C1C7B0431b6D69Dd20444E763ab1B1D1F051) |
 | mUSDC · mTBILL · mXAU · mSPY | [`0x5028…0dc5`](https://testnet.monadexplorer.com/address/0x502822f4238e792330Da841c192E194629B80dc5) · [`0x1B71…e608`](https://testnet.monadexplorer.com/address/0x1B71434Ae7e942568461D84eC6Ab065CE75ee608) · [`0x1A10…0F24`](https://testnet.monadexplorer.com/address/0x1A1093E67796c63745b447b8B138cBfB46BC0F24) · [`0xdF20…1989`](https://testnet.monadexplorer.com/address/0xdF2010a3c071236D50904AbD0c9a8DEA7b181989) |
 | Chainlink forwarder (Monad testnet, simulation) | [`0xB9F79d863261869B234c481D1f9A7af84AeAd192`](https://testnet.monadexplorer.com/address/0xB9F79d863261869B234c481D1f9A7af84AeAd192) |
 
-On the previous vault ([`0x5a4F…fa57`](https://testnet.monadexplorer.com/address/0x5a4F4A97fDB6Aeb5f86ffEA11C1502EAD736fa57)), identical except that the operator picked each nominal date, **rebalance #1** was executed by the Chainlink keeper (25/25/25/25 → 10/40/20/30) while the price feed moved the market: mSPY $502.09 → $506.08 and mXAU $2,481.28 → $2,467.86 between commit and execution. The vault sized the trades at the execution second and landed on **10.00 / 39.99 / 20.00 / 29.99%**.
+On the previous vault ([`0x5a4F…fa57`](https://testnet.monadexplorer.com/address/0x5a4F4A97fDB6Aeb5f86ffEA11C1502EAD736fa57)), which had no fixed schedule (the operator picked each anchor), **rebalance #1** was executed by the Chainlink keeper (25/25/25/25 → 10/40/20/30) while the price feed moved the market: mSPY $502.09 → $506.08 and mXAU $2,481.28 → $2,467.86 between commit and execution. The vault sized the trades at the execution second and landed on **10.00 / 39.99 / 20.00 / 29.99%**.
 
 | Step | Who | Transaction |
 |---|---|---|
@@ -111,13 +111,13 @@ flowchart LR
 | `WhisprrVault` | [`src/WhisprrVault.sol`](src/WhisprrVault.sol) | Holds constituents; commit → seed → reveal + execute at the sealed second, only via Chainlink; default flagging |
 | `OracleVenue`, `MockRWA` | [`src/mocks/`](src/mocks) | Testnet RWA market and tokens (mUSDC cash, mTBILL, mXAU, mSPY) |
 | Keeper workflow | [`cre/`](cre) | Every 30 s: record the seed when due; compute the sealed second from the secret plan; execute at it |
-| Indexer | [`indexer/`](indexer) | Envio HyperIndex: one `Epoch` per rebalance with seed, sealed second, offset from nominal, reveal, trades, and independent `verified` (hash) and `onSchedule` (timing) checks |
+| Indexer | [`indexer/`](indexer) | Envio HyperIndex: one `Epoch` per rebalance with seed, sealed second, offset from the anchor, reveal, trades, and independent `verified` (hash) and `onSchedule` (timing) checks |
 | Frontend | [`frontend/`](frontend) | Vite + React + Dynamic: live vault, window timeline, operator console (commit only), in-browser verification of hash and timing |
 
 ### Sponsor integrations
 
 - **Chainlink CRE.** The `whisprr-keeper` TypeScript workflow is the **only executor** of a committed rebalance. It holds the sealed plan as a workflow secret, records the Monad seed, computes the sealed second, and delivers the execution through the forwarder at that second. The vault accepts reports only from the forwarder, for the current epoch, and only inside `[executeAt, executeAt + tolerance]`.
-- **Envio.** HyperIndex turns raw events into the rebalance history the product is about: how long each rebalance stayed sealed, where its second landed relative to nominal, and two checks it computes itself rather than trusting the contract: the reveal re-hashes to the commitment, and execution landed at the second `keccak256(salt, seed)` implies.
+- **Envio.** HyperIndex turns raw events into the rebalance history the product is about: how long each rebalance stayed sealed, where its second landed relative to the anchor, and two checks it computes itself rather than trusting the contract: the reveal re-hashes to the commitment, and execution landed at the second `keccak256(salt, seed)` implies.
 - **Dynamic.** Sign-in with embedded or external wallets, used for more than login. The connected wallet's role decides what you can do: the operator gets the sealing console (commit only, no execute button), anyone signed in can record the seed or flag a default, and everyone can verify.
 
 ## Run it

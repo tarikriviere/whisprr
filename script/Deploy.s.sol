@@ -9,7 +9,7 @@ import {OracleVenue} from "../src/mocks/OracleVenue.sol";
 /// @notice Deploys the constituents, venue and vault, seeds a $1m 25/25/25/25 portfolio,
 /// and writes addresses to deployments/<chainid>.json.
 /// Timing defaults to a demo-friendly schedule: a rebalance every 5 minutes on the clock's 5-minute
-/// marks, window [-60s, +90s], 60s execution tolerance, commits at least 60s before the window.
+/// marks, window [-30s, +45s], 60s execution tolerance, commits at least 60s before the window.
 /// Override with REBALANCE_PERIOD, SCHEDULE_START, JITTER_BEFORE, JITTER_AFTER, TOLERANCE, COMMIT_LEAD.
 ///
 ///   forge script script/Deploy.s.sol --rpc-url $MONAD_TESTNET_RPC --broadcast                       # everything
@@ -28,8 +28,8 @@ contract Deploy is Script {
     function _newVault(address deployer, OracleVenue venue, address[] memory cs) internal returns (WhisprrVault) {
         uint64 period = uint64(vm.envOr("REBALANCE_PERIOD", uint256(300)));
         WhisprrVault.Timing memory t = WhisprrVault.Timing({
-            jitterBefore: uint64(vm.envOr("JITTER_BEFORE", uint256(60))),
-            jitterAfter: uint64(vm.envOr("JITTER_AFTER", uint256(90))),
+            jitterBefore: uint64(vm.envOr("JITTER_BEFORE", uint256(30))),
+            jitterAfter: uint64(vm.envOr("JITTER_AFTER", uint256(45))),
             executionTolerance: uint64(vm.envOr("TOLERANCE", uint256(60))),
             // First nominal date: the next multiple of the period, so dates fall on round clock times.
             scheduleStart: uint64(vm.envOr("SCHEDULE_START", (block.timestamp / period + 1) * period)),

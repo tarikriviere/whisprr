@@ -5,7 +5,7 @@ Indexes WhisprrVault on Monad testnet via HyperSync and serves it over GraphQL.
 | Entity | What it holds |
 |---|---|
 | `Vault` | Public framework (constituents, window, tolerances) and running totals: epochs, executions, defaults, verified reveals, executions at the sealed second |
-| `Epoch` | One row per sealed rebalance: commitment and tx, window, Monad seed, **sealed second and its offset from nominal**, reveal (weights, salt), the trades the vault sized at execution, how long it stayed sealed, `verified` and `onSchedule` |
+| `Epoch` | One row per sealed rebalance: commitment and tx, window, Monad seed, **sealed second and its offset from the anchor (scheduled time)**, reveal (weights, salt), the trades the vault sized at execution, how long it stayed sealed, `verified` and `onSchedule` |
 | `Trade` | Every trade executed in a rebalance |
 
 Both checks are computed by the indexer itself, independently of the contract: `verified` re-hashes

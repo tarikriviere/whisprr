@@ -1,7 +1,7 @@
 {
   "schedule": "*/30 * * * * *",
   "chainSelectorName": "monad-testnet",
-  "vaultAddress": "0xb7630C8991389877a3AC42bd24D8637D4F59d62E",
+  "vaultAddress": "0xcdFD19F994648E31894131e444449E820F022134",
   "chainId": 10143,
   "seedGasLimit": "300000",
   "executeGasLimit": "1200000"
