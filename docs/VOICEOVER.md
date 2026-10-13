@@ -1,64 +1,65 @@
-# Whisprr: voice-over
+# Whisprr: technical voice-over
 
 About 2:30 at a calm pace. One block per scene; `/` marks a short pause.
 
 ---
 
-**1 · The problem** (0:00–0:20)
+**1 · What it is** (0:00–0:15)
 
-Index funds rebalance on a published schedule, with predictable trades. /
-Traders know what's coming, and they get there first. /
-Research puts the cost at around twenty basis points on every dollar traded. /
-Onchain, it's worse: every pending trade is visible.
-
----
-
-**2 · The idea** (0:20–0:40)
-
-Whisprr keeps the rules public, and the specifics sealed. /
-The methodology and the schedule are fixed at deployment, and the methodology is fingerprinted onchain. /
-What stays secret until execution is the target weights, and the exact second the rebalance runs. /
-Nobody chooses that second. Not the market, and not the operator.
+Whisprr is an onchain index vault on Monad whose rebalances stay sealed until the second they execute, /
+and that second is chosen by no one. /
+Here's how it works.
 
 ---
 
-**3 · Commit** (0:40–1:05)
+**2 · Public framework** (0:15–0:35)
 
-As the index committee, I set new weights. /
-The commit seals the next scheduled rebalance. I can't pick the date. /
-Only a hash goes onchain: the weights, plus a random salt. /
-The plan itself goes to a Chainlink CRE workflow, as a secret.
-
----
-
-**4 · The sealed second** (1:05–1:30)
-
-A few blocks later, the workflow records a Monad block hash: a seed nobody could know when I committed. /
-The execution second is now fixed: the hash of the salt and the seed, inside the window. /
-The public sees only the window. /
-I can see the second, but I can't change it. And there's no execute button, for anyone.
+Everything public is fixed at deployment, as immutables in the vault: /
+the constituents, the rebalance schedule, the execution window around each anchor, the tolerances, /
+and the keccak hash of the methodology document, so the rules can't change silently.
 
 ---
 
-**5 · Execution** (1:30–2:00)
+**3 · Commit** (0:35–1:00)
 
-At that second, the keeper delivers the reveal. /
-In one transaction, the vault checks the hash, recomputes the second, and sizes the trades from live prices, so it lands on target however the market moved. /
-My browser re-verifies both: the hash matches, and execution landed at the sealed second. /
-A missed second can't execute late. It defaults, publicly.
-
----
-
-**6 · Under the hood** (2:00–2:25)
-
-Monad gives us fast blocks, and the seed. /
-Chainlink CRE is the only executor. Today it runs in Chainlink's simulator, and writes real Monad testnet transactions. /
-Dynamic handles sign-in, and an Envio indexer re-verifies every rebalance independently.
+As the index committee, I set target weights and seal them. /
+The browser draws a random 32-byte salt and computes keccak of the chain ID, vault, epoch, weights and salt. /
+Only that hash goes onchain. Commit takes no date: the vault assigns the next scheduled anchor. /
+The preimage goes to a Chainlink CRE workflow as a secret. It never touches the chain.
 
 ---
 
-**7 · Close** (2:25–2:35)
+**4 · The seed** (1:00–1:25)
 
-Next: generating the salt inside an enclave or with MPC, so even the operator can't see the second, /
-and splitting rebalances into confidential tranches with Unlink. /
-Whisprr. Public rules, sealed rebalances.
+The commit also fixes a seed block, five blocks ahead. /
+Once it's mined, the workflow records its block hash onchain, through Chainlink's forwarder. /
+Now the execution second is determined: window start, plus keccak of salt and seed, modulo the window length. /
+The salt was locked before the block existed, so nobody could steer the result. /
+And without the salt, nobody can compute it. The public sees only the window.
+
+---
+
+**5 · Execution** (1:25–2:00)
+
+The workflow computes the second locally, and at that moment delivers an execute report. /
+In one transaction, the vault re-hashes the preimage against the commitment, /
+recomputes the second from the revealed salt, and rejects anything early or past the tolerance. /
+Then it sizes the trades itself, from the venue's prices at that second, /
+and checks the resulting weights against the targets. /
+There's no execute function for the operator. If the second is missed, the rebalance defaults, publicly.
+
+---
+
+**6 · Verification** (2:00–2:15)
+
+Every reveal is re-checked off-chain: the browser recomputes the hash and the sealed second from the event, /
+and an Envio indexer does the same independently.
+
+---
+
+**7 · Stack and next steps** (2:15–2:35)
+
+Solidity and Foundry, with thirty-one tests, including fuzzing that the second always lands inside the window. /
+The CRE workflow is TypeScript, running in Chainlink's simulator and writing real Monad testnet transactions. /
+Dynamic for sign-in. /
+Next: salt generation in an enclave or with MPC, and confidential tranches with Unlink.
