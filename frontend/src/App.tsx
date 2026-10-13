@@ -58,7 +58,10 @@ export function App() {
               <dl className="kv">
                 <dt>Vault</dt><dd className="mono"><Addr a={vault} /></dd>
                 <dt>Operator</dt><dd className="mono"><Addr a={s.operator} /></dd>
-                <dt>Framework hash</dt><dd className="mono" title={s.frameworkHash}>{short(s.frameworkHash)}</dd>
+                <dt title="keccak256 of the published methodology document, fixed in the vault at deployment">Index methodology fingerprint</dt>
+                <dd className="mono" title={s.frameworkHash}>
+                  <a href="https://github.com/tarikriviere/whisprr/blob/main/docs/FRAMEWORK.md" target="_blank" rel="noreferrer">{short(s.frameworkHash)}</a>
+                </dd>
                 <dt>Schedule</dt><dd className="mono">every {fmtDuration(s.rebalancePeriod)} from {fmtTime(s.scheduleStart)}</dd>
                 <dt>Commit deadline</dt><dd className="mono">{s.commitLead.toString()}s before the window</dd>
                 <dt>Jitter window</dt><dd className="mono">−{s.jitterBefore.toString()}s / +{s.jitterAfter.toString()}s</dd>
