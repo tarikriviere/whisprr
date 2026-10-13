@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useWriteContract } from "wagmi";
 import type { Address } from "viem";
 import { vaultAbi } from "../generated/contracts";
@@ -6,6 +7,8 @@ import { useTx } from "../useTx";
 import { useClock } from "../useClock";
 import { fmtDuration, fmtTime, nextSlot, short } from "../whisprr";
 import { TxLine } from "./TxLine";
+import { HistoryModal, useReveal } from "./History";
+import type { Epoch } from "../whisprr";
 
 const pct = (t: bigint, a: bigint, b: bigint) => Math.min(100, Math.max(0, (Number(t - a) / Number(b - a || 1n)) * 100));
 
@@ -22,6 +25,7 @@ export function EpochPanel({ s, vault, connected }: { s: VaultState; vault: Addr
   const { writeContractAsync } = useWriteContract();
   const tx = useTx();
   const clock = useClock();
+  const [showHistory, setShowHistory] = useState(false);
   const open = !!e && (e.status === "Committed" || e.status === "Seeded");
   // The next date the operator could still commit for: after the open rebalance, if there is one.
   const next = nextSlot(s, open && clock < e.lastExecution ? e.lastExecution : clock);
@@ -112,9 +116,24 @@ export function EpochPanel({ s, vault, connected }: { s: VaultState; vault: Addr
           {defaultable && <button className="danger" onClick={() => send("markDefaulted")}>Flag as defaulted</button>}
         </div>
       )}
+      {e.status === "Executed" && <RevealChecks e={e} s={s} vault={vault} />}
       <TxLine tx={tx} />
       <h3>Schedule</h3>
       {schedule}
+      <button className="link-btn" onClick={() => setShowHistory(true)}>Rebalance history ({s.epochs.length}) →</button>
+      {showHistory && <HistoryModal s={s} vault={vault} onClose={() => setShowHistory(false)} />}
     </section>
+  );
+}
+
+/** The just-executed rebalance's independent checks, right on the card. */
+function RevealChecks({ e, s, vault }: { e: Epoch; s: VaultState; vault: Address }) {
+  const { r, verified } = useReveal(e, s, vault);
+  if (!r) return null;
+  return (
+    <p className="checks-line">
+      <span className={verified ? "ok" : "warn"}>{verified ? "✓ hash matches the commitment" : "✗ hash mismatch"}</span>
+      <span className={r.onTime ? "ok" : "warn"}>{r.onTime ? "✓ executed at the sealed second" : "✗ not at the sealed second"}</span>
+    </p>
   );
 }

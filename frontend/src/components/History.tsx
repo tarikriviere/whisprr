@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Address } from "viem";
 import { usePublicClient } from "wagmi";
@@ -6,11 +7,18 @@ import { vaultAbi } from "../generated/contracts";
 import type { VaultState } from "../useVault";
 import { executionTime, fmtBps, fmtTime, hashRebalance, short, type Epoch } from "../whisprr";
 
-export function History({ s, vault }: { s: VaultState; vault: Address }) {
-  if (s.epochs.length === 0) return null;
+/** The full rebalance history in a modal dialog (Esc, ✕ or a click outside closes it). */
+export function HistoryModal({ s, vault, onClose }: { s: VaultState; vault: Address; onClose: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    ref.current?.showModal();
+  }, []);
   return (
-    <section className="card">
-      <h2>Rebalance history</h2>
+    <dialog ref={ref} className="modal" onClose={onClose} onClick={(ev) => ev.target === ref.current && ref.current?.close()}>
+      <div className="card-head">
+        <h2>Rebalance history</h2>
+        <button className="icon-btn" aria-label="Close" onClick={() => ref.current?.close()}>✕</button>
+      </div>
       <p className="muted small">
         Each reveal is checked in your browser: ✓ hash matches the commitment · ✓ executed at the second its salt and
         the Monad seed imply. Click a rebalance for details.
@@ -18,11 +26,12 @@ export function History({ s, vault }: { s: VaultState; vault: Address }) {
       <div className="history">
         {s.epochs.map((e, i) => <EpochRow key={e.id.toString()} e={e} s={s} vault={vault} latest={i === 0} />)}
       </div>
-    </section>
+    </dialog>
   );
 }
 
-function EpochRow({ e, s, vault, latest }: { e: Epoch; s: VaultState; vault: Address; latest: boolean }) {
+/** Fetches an executed rebalance's reveal and checks it independently: hash and execution second. */
+export function useReveal(e: Epoch, s: VaultState, vault: Address) {
   const client = usePublicClient();
   const reveal = useQuery({
     queryKey: ["reveal", vault, e.id.toString()],
@@ -44,9 +53,12 @@ function EpochRow({ e, s, vault, latest }: { e: Epoch; s: VaultState; vault: Add
       return { weights: weights!, trades, salt: salt!, recomputed, tx: log.transactionHash, sealedAt, onTime };
     },
   });
-
   const r = reveal.data;
-  const verified = r && r.recomputed === e.commitment;
+  return { reveal, r, verified: !!r && r.recomputed === e.commitment };
+}
+
+function EpochRow({ e, s, vault, latest }: { e: Epoch; s: VaultState; vault: Address; latest: boolean }) {
+  const { reveal, r, verified } = useReveal(e, s, vault);
   const url = r && explorerTx(r.tx);
   return (
     // One line per rebalance; the latest starts expanded.

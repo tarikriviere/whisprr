@@ -6,7 +6,6 @@ import { useVault } from "./useVault";
 import { Portfolio } from "./components/Portfolio";
 import { EpochPanel } from "./components/EpochPanel";
 import { OperatorConsole } from "./components/OperatorConsole";
-import { History } from "./components/History";
 import { TrackRecord } from "./components/TrackRecord";
 import { fmtDuration, fmtTime, short } from "./whisprr";
 
@@ -63,7 +62,6 @@ export function App() {
           </div>
           <div className="col">
             <EpochPanel s={s} vault={vault} connected={!!address} />
-            <History s={s} vault={vault} />
           </div>
           <div className="col">
             {isOperator && <OperatorConsole s={s} vault={vault} />}
