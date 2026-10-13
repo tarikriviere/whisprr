@@ -1,35 +1,40 @@
 # whisprr-keeper: Chainlink CRE workflow
 
-Draws each sealed rebalance's execution time from DON-agreed randomness.
+The only executor of a committed Whisprr rebalance.
 
-Every 30 seconds the workflow calls `WhisprrVault.pendingDraw()`. When an epoch's draw block has
-been mined and no time has been drawn yet, it produces a 256-bit random word and writes the
-DON-signed report `abi.encode(uint256 epoch, uint256 randomWord)` to `WhisprrVault.onReport`
-through the Chainlink forwarder.
+Every 30 seconds the workflow reads the vault's current epoch and does at most one thing:
 
-The vault:
-- accepts the report only from its configured forwarder, only for the current epoch, and only once;
-- mixes the word with the draw block's hash and the commitment, so neither the DON's word nor the
-  block producer alone decides the time;
-- opens the anyone-callable block-hash fallback (`drawExecutionTime`) only `CRE_TIMEOUT_BLOCKS`
-  after the draw block, so the operator can't pick whichever source it prefers.
+- **Committed, seed block mined** → delivers a `RECORD_SEED` report: the vault stores the hash of
+  the Monad block mined 5 blocks after the commit.
+- **Seeded** → reads the sealed plan from its `sealed_plan` secret, checks it against the onchain
+  commitment, and computes the sealed second
+  `executeAt = windowStart + keccak256(salt, seedHash) mod (window + 1)`. When the chain's clock
+  reaches it, delivers an `EXECUTE` report carrying the plan. The vault rechecks the hash and the
+  second, and rejects the report a second early or past `executionTolerance`.
 
-## Run it
+The sealed plan reaches the workflow as a secret, never onchain, so nobody without it can compute
+the second. The operator has no execute function: once committed, a rebalance runs at its sealed
+second or defaults.
+
+## Run it (simulation)
 
 ```bash
-cre login                                   # once
-cd cre/whisprr-keeper && bun install && cd ..
-cp .env.example .env                        # CRE_ETH_PRIVATE_KEY: funded Monad testnet key, no 0x
-# deploying the vault on Monad testnet fills vaultAddress in config.*.json automatically
-cre workflow simulate whisprr-keeper -T staging-settings --broadcast
+cre login                                        # once
+cd cre/whisprr-keeper && bun install && cd ../..
+# cre/.env: CRE_ETH_PRIVATE_KEY=<funded Monad testnet key, no 0x>
+# deploying the vault fills vaultAddress in config.*.json automatically
+
+# after committing a rebalance:
+node cre/whisprr-keeper/scripts/hand-over.mjs <sealed file>   # → WHISPRR_SEALED_PLAN in cre/.env
+cre/keeper.sh                                                  # seed, then execute at the sealed second
+
+# or keep it running and let it pick up plans the browser downloads:
+WATCH_DIR="/mnt/c/Users/<you>/Downloads" cre/keeper.sh
 ```
 
-`simulate --broadcast` delivers the report through Monad testnet's simulation forwarder
-(`0xB9F79d863261869B234c481D1f9A7af84AeAd192`), which is the vault's default `drawForwarder`.
-A deployed workflow goes through the production KeystoneForwarder
-(`0xF8344CFd5c43616a4366C34E3EEE75af79a74482`), which verifies DON signatures. Deploy the vault
-with `DRAW_FORWARDER` set to that address.
-
-> The simulation forwarder doesn't check DON signatures, so on that configuration anyone could
-> deliver a word. The block-hash mix limits the damage, but production should use the
-> KeystoneForwarder.
+`keeper.sh` stands in for the DON's cron while the workflow runs in simulation. Reports go through
+Monad testnet's simulation forwarder (`0xB9F79d863261869B234c481D1f9A7af84AeAd192`), the vault's
+default `chainlinkForwarder`. A deployed workflow runs on Chainlink's schedule and writes through
+the KeystoneForwarder (`0xF8344CFd5c43616a4366C34E3EEE75af79a74482`), which verifies DON
+signatures; deploy the vault with `CHAINLINK_FORWARDER` set to it, and upload the sealed plan with
+`cre secrets`.
