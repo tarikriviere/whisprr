@@ -14,9 +14,10 @@ Here's how it works.
 
 **2 · The index on screen** (0:15–0:40)
 
-This is a one-million-dollar multi-asset index of tokenized real-world assets: /
+This is a one-million-dollar multi-asset index of tokenized real-world assets, with four constituents: /
 cash, short-dated Treasury bills, gold, and the S&P 500. /
-For the demo, each is a mock ERC-20 we deployed on Monad testnet, and trades fill against an oracle-priced venue. /
+Each is its own ERC-20, held directly by the vault, with weights in basis points, starting at twenty-five percent each. /
+For the demo, they're mock tokens we deployed on Monad testnet, and trades fill against an oracle-priced venue. /
 A price feed moves gold and the S&P every ten seconds, with a small mean-reverting random walk, /
 so you can see the vault size its trades against a market that moves. In production, Pyth feeds would price it.
 
@@ -25,8 +26,8 @@ so you can see the vault size its trades against a market that moves. In product
 **3 · Public framework** (0:40–0:55)
 
 Everything public is fixed at deployment, as immutables in the vault: /
-the constituents, the rebalance schedule, the window around each anchor, the tolerances, /
-and the hash of the methodology document, so the rules can't change silently.
+the constituents, the schedule, the window around each anchor, the tolerances, /
+and the hash of the methodology, so the rules can't change silently.
 
 ---
 
