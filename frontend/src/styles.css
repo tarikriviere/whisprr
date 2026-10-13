@@ -127,8 +127,13 @@ button.danger { background: var(--warn); }
 .file { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
 
 .history { display: grid; gap: 10px; max-height: 340px; overflow-y: auto; padding-right: 4px; }
-.epoch-row { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
-.epoch-meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.epoch-row { border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; }
+.epoch-meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; cursor: pointer; list-style: none; }
+.epoch-meta::-webkit-details-marker { display: none; }
+.epoch-meta::before { content: "▸"; color: var(--muted); transition: transform 0.15s; }
+details[open] > .epoch-meta::before { transform: rotate(90deg); }
+details[open] > .epoch-meta { margin-bottom: 6px; }
+.checks { margin-left: auto; display: flex; gap: 10px; font-size: 12px; }
 .reveal { margin-top: 8px; display: grid; gap: 4px; font-size: 13px; }
 .reveal-weights { display: flex; gap: 14px; flex-wrap: wrap; }
 

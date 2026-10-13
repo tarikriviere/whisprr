@@ -11,18 +11,18 @@ export function History({ s, vault }: { s: VaultState; vault: Address }) {
   return (
     <section className="card">
       <h2>Rebalance history</h2>
-      <p className="muted">
-        Each reveal is checked in your browser twice: its hash against the commitment posted before anyone knew the
-        weights, and its execution second against the one its salt and the Monad seed imply.
+      <p className="muted small">
+        Each reveal is checked in your browser: ✓ hash matches the commitment · ✓ executed at the second its salt and
+        the Monad seed imply. Click a rebalance for details.
       </p>
       <div className="history">
-        {s.epochs.map((e) => <EpochRow key={e.id.toString()} e={e} s={s} vault={vault} />)}
+        {s.epochs.map((e, i) => <EpochRow key={e.id.toString()} e={e} s={s} vault={vault} latest={i === 0} />)}
       </div>
     </section>
   );
 }
 
-function EpochRow({ e, s, vault }: { e: Epoch; s: VaultState; vault: Address }) {
+function EpochRow({ e, s, vault, latest }: { e: Epoch; s: VaultState; vault: Address; latest: boolean }) {
   const client = usePublicClient();
   const reveal = useQuery({
     queryKey: ["reveal", vault, e.id.toString()],
@@ -49,14 +49,20 @@ function EpochRow({ e, s, vault }: { e: Epoch; s: VaultState; vault: Address }) 
   const verified = r && r.recomputed === e.commitment;
   const url = r && explorerTx(r.tx);
   return (
-    <div className="epoch-row">
-      <div className="epoch-meta">
+    // One line per rebalance; the latest starts expanded.
+    <details className="epoch-row" open={latest}>
+      <summary className="epoch-meta">
         <strong>#{e.id.toString()}</strong>
         <span className={`pill pill-${e.status.toLowerCase()}`}>{e.status}</span>
-        <span className="mono muted" title={e.commitment}>{short(e.commitment)}</span>
-        {e.executedAt > 0n && <span className="muted">executed {fmtTime(e.executedAt)}</span>}
-        {e.status === "Executed" && <span className="muted">· by the Chainlink CRE keeper</span>}
-      </div>
+        {e.executedAt > 0n && <span className="muted mono">{fmtTime(e.executedAt)}</span>}
+        {r && (
+          <span className="checks">
+            <span className={verified ? "ok" : "warn"} title="Reveal hashes to the commitment">{verified ? "✓" : "✗"} hash</span>
+            <span className={r.onTime ? "ok" : "warn"} title="Executed at the sealed second">{r.onTime ? "✓" : "✗"} timing</span>
+          </span>
+        )}
+      </summary>
+      <div className="mono muted small" title={e.commitment}>commitment {short(e.commitment)}</div>
       {r && (
         <div className="reveal">
           <div className="reveal-weights">
@@ -76,6 +82,6 @@ function EpochRow({ e, s, vault }: { e: Epoch; s: VaultState; vault: Address }) 
         </div>
       )}
       {reveal.isError && <div className="warn">Couldn't load the reveal event.</div>}
-    </div>
+    </details>
   );
 }
