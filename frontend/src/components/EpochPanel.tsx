@@ -87,9 +87,13 @@ export function EpochPanel({ s, vault, connected }: { s: VaultState; vault: Addr
       {open && <p className="countdown mono">{phase(clock, e.windowStart, e.windowEnd, e.lastExecution)}</p>}
       <div className="timeline" aria-label="Execution window">
         <div className="tl-track" />
-        <div className="tl-mark tl-nominal" style={{ left: `${pct(nominal, e.windowStart, e.windowEnd)}%` }} title="Anchor: the scheduled time"><span>anchor</span></div>
+        <div className="tl-mark tl-nominal" style={{ left: `${pct(nominal, e.windowStart, e.windowEnd)}%` }} title="Anchor: the scheduled time">
+          <span><b>anchor</b>{fmtTime(nominal)}</span>
+        </div>
         {e.status === "Executed" && (
-          <div className="tl-mark tl-exec" style={{ left: `${pct(e.executeAt, e.windowStart, e.windowEnd)}%` }} title="Sealed execution second"><span>executed</span></div>
+          <div className="tl-mark tl-exec" style={{ left: `${pct(e.executeAt, e.windowStart, e.windowEnd)}%` }} title="Sealed execution second">
+            <span>executed {fmtTime(e.executedAt)}</span>
+          </div>
         )}
         {/* Live only once the window opens: progress fills behind a pulsing "now" dot. */}
         {open && clock >= e.windowStart && (
@@ -98,8 +102,9 @@ export function EpochPanel({ s, vault, connected }: { s: VaultState; vault: Addr
             <div className="tl-now" style={{ left: `${pct(clock, e.windowStart, e.windowEnd)}%` }} title="Now"><span>live</span></div>
           </>
         )}
+        <div className="tl-end tl-end-start"><b>window opens</b>{fmtTime(e.windowStart)}</div>
+        <div className="tl-end tl-end-end"><b>closes</b>{fmtTime(e.windowEnd)}</div>
       </div>
-      <div className="tl-ends mono small muted"><span>{fmtTime(e.windowStart)}</span><span>{fmtTime(e.windowEnd)}</span></div>
       <p className="note">{note}</p>
       {connected && (seedReady || defaultable) && (
         <div className="actions">
