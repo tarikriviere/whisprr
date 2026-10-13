@@ -6,11 +6,11 @@ field_selection:
   - hash
 chains:
 - id: 10143
-  start_block: 0
+  start_block: 70684721
   contracts:
   - name: WhisprrVault
     address:
-    - '0x0000000000000000000000000000000000000001'
+    - '0x4Ad9eE918aAAff5c00267af74A0590F5ED40ab2A'
     events:
     - event: Committed(uint256 indexed epoch, bytes32 indexed commitment, uint64 windowStart, uint64 windowEnd, uint64 drawBlock)
     - event: Defaulted(uint256 indexed epoch)
