@@ -38,26 +38,14 @@ export function App() {
 
       {s && vault && (
         <div className="grid">
+          {/* Three columns at demo width: the index, the live rebalance, governance. */}
           <div className="col">
             <Portfolio s={s} />
-            <TrackRecord s={s} vault={vault} />
-            <History s={s} vault={vault} />
-          </div>
-          <div className="col">
-            <EpochPanel s={s} vault={vault} connected={!!address} />
-            {isOperator && <OperatorConsole s={s} vault={vault} />}
-            {address && !isOperator && (
-              <section className="card muted small">
-                Signed in{user?.email ? ` as ${user.email}` : ""} with {short(address)}. Only the operator wallet{" "}
-                {short(s.operator)} can commit, and only the Chainlink CRE keeper can execute. Anyone can record the seed, flag a default, or
-                verify a reveal.
-              </section>
-            )}
             <section className="card">
               <h2>Public framework</h2>
               <dl className="kv">
                 <dt>Vault</dt><dd className="mono"><Addr a={vault} /></dd>
-                <dt>Operator</dt><dd className="mono"><Addr a={s.operator} /></dd>
+                <dt>Index committee (operator)</dt><dd className="mono"><Addr a={s.operator} /></dd>
                 <dt title="keccak256 of the published methodology document, fixed in the vault at deployment">Index methodology fingerprint</dt>
                 <dd className="mono" title={s.frameworkHash}>
                   <a href="https://github.com/tarikriviere/whisprr/blob/main/docs/FRAMEWORK.md" target="_blank" rel="noreferrer">{short(s.frameworkHash)}</a>
@@ -71,11 +59,31 @@ export function App() {
                 <dt>Executor</dt><dd>Chainlink CRE workflow (in Chainlink's simulator) via <Addr a={s.chainlinkForwarder} /></dd>
               </dl>
             </section>
+            <TrackRecord s={s} vault={vault} />
+          </div>
+          <div className="col">
+            <EpochPanel s={s} vault={vault} connected={!!address} />
+            <History s={s} vault={vault} />
+          </div>
+          <div className="col">
+            {isOperator && <OperatorConsole s={s} vault={vault} />}
+            {address && !isOperator && (
+              <section className="card muted small">
+                Signed in{user?.email ? ` as ${user.email}` : ""} with {short(address)}. Only the index committee's wallet{" "}
+                {short(s.operator)} can commit, and only the Chainlink CRE keeper can execute. Anyone can record the seed, flag a default, or
+                verify a reveal.
+              </section>
+            )}
+            {!address && (
+              <section className="card muted small">
+                Index committee: sign in with the operator wallet to seal the next scheduled rebalance.
+              </section>
+            )}
           </div>
         </div>
       )}
       <footer className="muted small">
-        Commit → random draw → atomic reveal + execute. Everything runs onchain.
+        Seal weights → Monad seed fixes a secret second → reveal + execute at that second, onchain.
       </footer>
     </div>
   );

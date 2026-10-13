@@ -19,7 +19,7 @@ export function OperatorConsole({ s, vault }: { s: VaultState; vault: Address })
   return (
     <section className="card operator">
       <div className="card-head">
-        <h2>Operator console</h2>
+        <h2>Index committee</h2>
         <span className="pill pill-operator">operator wallet</span>
       </div>
       {open ? <SealedPanel s={s} vault={vault} /> : <CommitPanel s={s} vault={vault} />}
