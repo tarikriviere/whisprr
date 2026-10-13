@@ -40,6 +40,24 @@ Randomizing the date means filling at a slightly different price than the nomina
 
 Monte Carlo, 100,000 rebalances ([`analysis/dispersion.py`](analysis/dispersion.py)). Assumptions: 4 rebalances a year, 20% turnover each, a front-running premium of 22 ± 6 bps on traded notional (Dimensional's run-up plus reversal), Whisprr fills at a uniform offset of −1 to +2 days, 150 bps daily idiosyncratic volatility, 40 names per rebalance. Under those assumptions the transparent index loses **~17.6 bps a year**, in line with Arnott's 23 bps. Whisprr's expected cost is **zero**.
 
+## Live on Monad testnet
+
+| Contract | Address |
+|---|---|
+| `WhisprrVault` | [`0x4Ad9eE918aAAff5c00267af74A0590F5ED40ab2A`](https://testnet.monadexplorer.com/address/0x4Ad9eE918aAAff5c00267af74A0590F5ED40ab2A) |
+| `OracleVenue` | [`0x2899bd7e163e537Cf3Eeae77BC75df5BB8469426`](https://testnet.monadexplorer.com/address/0x2899bd7e163e537Cf3Eeae77BC75df5BB8469426) |
+| mUSDC · mTBILL · mXAU · mSPY | [`0xef9C…27c1`](https://testnet.monadexplorer.com/address/0xef9Cde1bd43c8b4d9d4e9D5e9a6740F0A81027c1) · [`0xB47e…d6da`](https://testnet.monadexplorer.com/address/0xB47ecD6C7f929881802d17eC179204a58f35d6da) · [`0xD6C1…44C7`](https://testnet.monadexplorer.com/address/0xD6C124c84B4E501Dd558d3D13C49f3f6338c44C7) · [`0xFA00…0ADD`](https://testnet.monadexplorer.com/address/0xFA00F349E7d55F795Cf54259f983289317000ADD) |
+
+Rebalance #1, from sealed commitment to verified execution (25/25/25/25 → 10/40/20/30):
+
+| Step | Transaction |
+|---|---|
+| 1. Commit: only `keccak256(preimage)` goes onchain | [`0xbfd5849c…6565382a`](https://testnet.monadexplorer.com/tx/0xbfd5849cef2a68944f1abc721a552446356bc3048b783c4b5dac248d6565382a) |
+| 2. Draw: Chainlink CRE report sets the execution time (49 s before nominal) | [`0x126b9eaf…8128515f`](https://testnet.monadexplorer.com/tx/0x126b9eaf54d3f8663d865e664aa310a834ad4a72353306d89a343c018128515f) |
+| 3. Reveal + execute: preimage checked, 3 trades, weights checked, in one tx | [`0x7bc9f791…1af51a35`](https://testnet.monadexplorer.com/tx/0x7bc9f791faf9b72e9488fa1cd56061cd0d1f3e2bc7f4033b30042eef1af51a35) |
+
+The 18 deployment transactions are recorded in [`broadcast/Deploy.s.sol/10143/run-latest.json`](broadcast/Deploy.s.sol/10143/run-latest.json).
+
 ## Why it has to be fully onchain
 
 A commit-reveal works even for an offchain index, but then it only proves *honesty of intent*. The buying and selling still happens where no one can see it. Whisprr's moat is that the whole mechanism runs onchain:
