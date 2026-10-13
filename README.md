@@ -18,24 +18,24 @@ Whisprr keeps **the framework public** and **the actionable detail sealed**:
 
 | Public from day one ([`docs/FRAMEWORK.md`](docs/FRAMEWORK.md), hash stored onchain) | Sealed until the moment of execution |
 |---|---|
-| The universe of constituents, the methodology class, the execution window around each nominal date, the timing formula, the executor (Chainlink), the tolerances, the operator | The target weights, the trade list, the salt, and with it the exact execution second |
+| The universe of constituents, the methodology class, the execution window around each nominal date, the timing formula, the executor (Chainlink), the tolerances, the operator | The target weights (and with them every trade), the salt, and with it the exact execution second |
 
 Each rebalance goes through four steps:
 
-1. **Commit (operator).** The operator posts `keccak256(abi.encode(chainid, vault, epoch, weights, trades, salt))` and a nominal date, which fixes a public window `[nominal − jitterBefore, nominal + jitterAfter]`. The plan includes a random **salt**. The operator hands the sealed plan to the Chainlink CRE keeper workflow as a secret; it never touches the chain. **The operator's role ends here.**
+1. **Commit (operator).** The operator posts `keccak256(abi.encode(chainid, vault, epoch, weights, salt))` and a nominal date, which fixes a public window `[nominal − jitterBefore, nominal + jitterAfter]`. The plan includes a random **salt**. The operator hands the sealed plan to the Chainlink CRE keeper workflow as a secret; it never touches the chain. **The operator's role ends here.**
 2. **Seed (Monad).** Five blocks later, that block's hash is recorded onchain (by the keeper, or by anyone). From that moment the execution second is fixed:
 
    `executeAt = windowStart + keccak256(salt, seedHash) mod (window length + 1)`
 
    The salt was locked inside the commitment before the block existed, and nobody knew the block hash at commit time, so nobody chose the second. Without the salt, nobody can compute it: the market sees only the window.
-3. **Execute (Chainlink only).** When the second arrives, the keeper delivers an `EXECUTE` report through the Chainlink forwarder. In **one transaction** the vault checks the plan against the commitment, recomputes `executeAt` from the revealed salt and requires `executeAt ≤ now ≤ executeAt + tolerance`, executes every trade against tokenized RWA constituents, and checks the resulting weights. The market learns the time and the trades in the same transaction. The operator has **no function to execute with**.
+3. **Execute (Chainlink only).** When the second arrives, the keeper delivers an `EXECUTE` report through the Chainlink forwarder. In **one transaction** the vault checks the plan against the commitment, recomputes `executeAt` from the revealed salt and requires `executeAt ≤ now ≤ executeAt + tolerance`, then **sizes the trades itself from the prices at that second** (sell overweight constituents into cash, buy underweight ones), executes them against tokenized RWA constituents, and checks the resulting weights. Only the weights are committed, so the vault lands on target however far prices moved inside the window. The market learns the time, the weights and the trades in the same transaction. The operator has **no function to execute with**.
 4. **Verify, or default.** Anyone can recompute both the hash and the execution second from the `Executed` event; the frontend and the Envio indexer both do so independently. If nothing executes by the end of the window plus the tolerance, anyone can flag the rebalance as defaulted onchain.
 
 | Who | Can | Can't |
 |---|---|---|
 | Operator | Choose the target weights and the nominal date | Choose the execution second, execute, delay, or execute late |
 | Chainlink keeper | Execute the committed plan at the sealed second | Execute a different plan (hash check) or at a different second (vault recomputes it) |
-| Market | See the window and the commitment | Learn the second or the trades before they happen |
+| Market | See the window and the commitment | Learn the second, the weights or the trades before they happen |
 
 There's no ZK here. A hash commitment is the right primitive: the plan only needs to stay secret until it executes, not forever. One primitive covers every use: the public framework is committed by hash at deployment, each rebalance by hash before it executes, and the execution second is derived from what that hash locks in.
 
@@ -47,22 +47,20 @@ Randomizing the date means filling at a slightly different price than the nomina
 
 | Contract | Address |
 |---|---|
-| `WhisprrVault` | [`0x1CD04ce821C851Af7f28284E1f5FDBac9645d08C`](https://testnet.monadexplorer.com/address/0x1CD04ce821C851Af7f28284E1f5FDBac9645d08C) |
+| `WhisprrVault` | [`0x5a4F4A97fDB6Aeb5f86ffEA11C1502EAD736fa57`](https://testnet.monadexplorer.com/address/0x5a4F4A97fDB6Aeb5f86ffEA11C1502EAD736fa57) |
 | `OracleVenue` | [`0xb8E8C1C7B0431b6D69Dd20444E763ab1B1D1F051`](https://testnet.monadexplorer.com/address/0xb8E8C1C7B0431b6D69Dd20444E763ab1B1D1F051) |
 | mUSDC · mTBILL · mXAU · mSPY | [`0x5028…0dc5`](https://testnet.monadexplorer.com/address/0x502822f4238e792330Da841c192E194629B80dc5) · [`0x1B71…e608`](https://testnet.monadexplorer.com/address/0x1B71434Ae7e942568461D84eC6Ab065CE75ee608) · [`0x1A10…0F24`](https://testnet.monadexplorer.com/address/0x1A1093E67796c63745b447b8B138cBfB46BC0F24) · [`0xdF20…1989`](https://testnet.monadexplorer.com/address/0xdF2010a3c071236D50904AbD0c9a8DEA7b181989) |
 | Chainlink forwarder (Monad testnet, simulation) | [`0xB9F79d863261869B234c481D1f9A7af84AeAd192`](https://testnet.monadexplorer.com/address/0xB9F79d863261869B234c481D1f9A7af84AeAd192) |
 
-**Rebalance #3**, committed from the browser through Dynamic, executed by the Chainlink keeper (10/40/20/30 → 25/25/25/25):
+**Rebalance #1**, executed by the Chainlink keeper (25/25/25/25 → 10/40/20/30) while the price feed moved the market: mSPY $502.09 → $506.08 and mXAU $2,481.28 → $2,467.86 between commit and execution. The vault sized the trades at the execution second and landed on **10.00 / 39.99 / 20.00 / 29.99%**.
 
 | Step | Who | Transaction |
 |---|---|---|
-| 1. Commit: only the hash goes onchain | Operator (browser) | [`0x505f8b65…23b95c4d`](https://testnet.monadexplorer.com/tx/0x505f8b65e36b7e3c0d7d6826c6548b4b687c90c93a0b3c76ffe9c11823b95c4d) |
-| 2. Seed: Monad block hash recorded; the second is now fixed but sealed | Chainlink keeper | [`0x67998ab2…7e6d1019`](https://testnet.monadexplorer.com/tx/0x67998ab2a89a0bc878a21285a0f327e816a0d2e13ab373453b02cf237e6d1019) |
-| 3. Reveal + execute at the sealed second (+11 s) | Chainlink keeper | [`0xbfaf0084…b3f17beb`](https://testnet.monadexplorer.com/tx/0xbfaf00844a88fc89e34c3ec4689287a17e7c8116cb8851471b6d8584b3f17beb) |
+| 1. Commit: only the hash of the weights and salt goes onchain | Operator | [`0x9df4b9b2…475c7d05`](https://testnet.monadexplorer.com/tx/0x9df4b9b26e2aa016c3c4a0e9ce8381b199b68097da12c2cc4dcfea76475c7d05) |
+| 2. Seed: Monad block hash recorded; the second is now fixed but sealed | Chainlink keeper | [`0x9a84be34…07c70590`](https://testnet.monadexplorer.com/tx/0x9a84be340105b347623373862f675150743266963c2715f07c8c1e0407c70590) |
+| 3. Reveal, size the trades at current prices and execute at the sealed second (+6 s) | Chainlink keeper | [`0x99b9041a…50e2a1e1`](https://testnet.monadexplorer.com/tx/0x99b9041a3621ebf2371b2d26b5eec33b8a09c805ec4e0b61710bd19850e2a1e1) |
 
-**Rebalance #1** (command line, 25/25/25/25 → 10/40/20/30): commit [`0x1b4f939f…d6412375`](https://testnet.monadexplorer.com/tx/0x1b4f939f043fefec4be520360657f6346d3728c02d7bbd35898c1c5fd6412375), seed [`0xa3d39f73…1820c087`](https://testnet.monadexplorer.com/tx/0xa3d39f738d231ee474cff92ea92fc4fecd23dfc897b7c44dbda583b01820c087), executed at the sealed second +36 s [`0x4e0b26e5…ed327b12`](https://testnet.monadexplorer.com/tx/0x4e0b26e597919603eede991288bef8b3ab56fd03c674821557548f6aed327b12).
-
-**Rebalance #2** shows the other path: its sealed plan reached the keeper after the window had closed, so the keeper refused to execute late and the rebalance was publicly flagged **Defaulted**. Late execution is exactly the discretion the design removes.
+An earlier vault ([`0x1CD0…d08C`](https://testnet.monadexplorer.com/address/0x1CD04ce821C851Af7f28284E1f5FDBac9645d08C)) committed the trade list itself; it ran three rebalances, including one the keeper refused to execute late, publicly flagged **Defaulted**. It was replaced because fixed trades miss their targets once prices move.
 
 The deployment transactions are recorded in [`broadcast/Deploy.s.sol/10143/`](broadcast/Deploy.s.sol/10143). An earlier deployment ([`0x4Ad9…ab2A`](https://testnet.monadexplorer.com/address/0x4Ad9eE918aAAff5c00267af74A0590F5ED40ab2A)) used a previous design in which a Chainlink-drawn time was public after the draw and the operator submitted the execution; it was replaced so that neither the time nor the execution is in anyone's hands.
 
@@ -126,12 +124,14 @@ flowchart LR
 
 ```bash
 # contracts
-forge build && forge test            # 25 tests
+forge build && forge test            # 28 tests
 
 # deploy to Monad testnet (vault, venue, four RWAs, $1m seeded 25/25/25/25)
 cp .env.example .env                  # PRIVATE_KEY with testnet MON
 source .env
 forge script script/Deploy.s.sol --rpc-url $MONAD_TESTNET_RPC --broadcast
+# or a new vault against the existing tokens and venue
+forge script script/Deploy.s.sol --sig "vaultOnly()" --rpc-url $MONAD_TESTNET_RPC --broadcast
 ```
 
 Deploying writes `deployments/10143.json` and points the keeper workflow's config at the new vault. Then:
@@ -159,7 +159,7 @@ cre/keeper.sh                                                                   
 - **The operator knows the salt**, so once the seed is recorded it could compute the second. It still can't change it, execute, or delay it. Removing that knowledge is on the roadmap.
 - **Seed re-arm.** If nobody records the seed within 256 blocks (~100 s), it re-arms to a fresh block. With the keeper running, the seed is recorded within one polling interval.
 - **Prices** come from an owner-set venue standing in for an RWA market. On testnet, `script/price-feed.sh` moves them with a mean-reverting random walk (mSPY and mXAU every 30 s, a slow accrual for mTBILL, mUSDC at $1), signed by a dedicated price-feed key that owns the venue. Pyth feeds would mark constituents to market.
-- **Trades are planned at commit.** If prices move a lot before execution, the committed trades can miss the target weights by more than the tolerance and execution reverts. The rebalance then defaults rather than executing something other than what was committed.
+- **Trades are sized from spot prices at the execution second.** Real indices freeze share multipliers at a fixing before the rebalance; sizing at execution is the onchain approximation. The weight tolerance now only guards against venue slippage; with a real venue, per-trade `minAmountOut` from an oracle would tighten it.
 
 ## Roadmap
 

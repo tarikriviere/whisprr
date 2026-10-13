@@ -5,11 +5,11 @@ Indexes WhisprrVault on Monad testnet via HyperSync and serves it over GraphQL.
 | Entity | What it holds |
 |---|---|
 | `Vault` | Public framework (constituents, window, tolerances) and running totals: epochs, executions, defaults, verified reveals, executions at the sealed second |
-| `Epoch` | One row per sealed rebalance: commitment and tx, window, Monad seed, **sealed second and its offset from nominal**, reveal (weights, salt), trades, how long it stayed sealed, `verified` and `onSchedule` |
+| `Epoch` | One row per sealed rebalance: commitment and tx, window, Monad seed, **sealed second and its offset from nominal**, reveal (weights, salt), the trades the vault sized at execution, how long it stayed sealed, `verified` and `onSchedule` |
 | `Trade` | Every trade executed in a rebalance |
 
 Both checks are computed by the indexer itself, independently of the contract: `verified` re-hashes
-the revealed preimage (`keccak256(abi.encode(chainid, vault, epoch, weights, trades, salt))`) and
+the revealed preimage (`keccak256(abi.encode(chainid, vault, epoch, weights, salt))`) and
 compares it with the commitment; `onSchedule` recomputes the sealed second
 (`windowStart + keccak256(salt, seedHash) mod (window + 1)`) and checks execution landed within the
 tolerance after it.

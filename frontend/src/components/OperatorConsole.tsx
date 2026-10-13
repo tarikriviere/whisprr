@@ -38,7 +38,7 @@ function CommitPanel({ s, vault }: { s: VaultState; vault: Address }) {
 
   async function commit() {
     const sealed: Sealed = {
-      chainId: chain.id, vault, epoch: (s.epochs[0]?.id ?? 0n) + 1n, weights, trades, salt: randomSalt(),
+      chainId: chain.id, vault, epoch: (s.epochs[0]?.id ?? 0n) + 1n, weights, salt: randomSalt(),
     };
     const commitment = hashRebalance(sealed);
     // Keep the preimage before anything is broadcast: without it the epoch can't be executed.
@@ -73,7 +73,11 @@ function CommitPanel({ s, vault }: { s: VaultState; vault: Address }) {
       {!valid && <p className="warn">Weights sum to {(sum / 100).toFixed(2)}%. They must sum to 100%.</p>}
       {valid && (
         <div className="trades">
-          <h3>Sealed trade list ({trades.length})</h3>
+          <h3>Trades at today's prices ({trades.length})</h3>
+          <p className="muted small">
+            A preview. Only the weights are sealed: the vault sizes the trades itself at the execution second, from the
+            prices then.
+          </p>
           {trades.length === 0 && <p className="muted">Already at target.</p>}
           <ul>
             {trades.map((t, i) => {

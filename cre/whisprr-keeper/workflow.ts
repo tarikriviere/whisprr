@@ -6,8 +6,9 @@
 //                                    against the onchain commitment, and compute
 //                                      executeAt = windowStart + keccak256(salt, seedHash) mod (window + 1).
 //                                    Once the chain's clock reaches executeAt, deliver an EXECUTE
-//                                    report carrying the plan. The vault rechecks everything and
-//                                    rejects the report a second early or past its tolerance.
+//                                    report carrying the weights and salt. The vault rechecks
+//                                    everything, rejects the report a second early or past its
+//                                    tolerance, and sizes the trades from that second's prices.
 // The sealed plan never touches the chain before execution, so nobody without it can compute
 // the time. The operator has no way to execute; this workflow is the only executor.
 import { bytesToHex, cre, encodeCallMsg, getNetwork, prepareReportRequest, TxStatus, type Runtime } from "@chainlink/cre-sdk"
@@ -46,16 +47,7 @@ const vaultAbi = parseAbi([
 	"function executionTolerance() view returns (uint64)",
 ])
 
-const tradeTuple = {
-	type: "tuple[]",
-	components: [
-		{ name: "tokenIn", type: "uint8" },
-		{ name: "tokenOut", type: "uint8" },
-		{ name: "amountIn", type: "uint256" },
-		{ name: "minAmountOut", type: "uint256" },
-	],
-} as const
-const sealedParams = [{ type: "uint256" }, { type: "uint16[]" }, tradeTuple, { type: "bytes32" }] as const
+const sealedParams = [{ type: "uint256" }, { type: "uint16[]" }, { type: "bytes32" }] as const
 
 export const onCronTrigger = (runtime: Runtime<Config>): string => {
 	const cfg = runtime.config
@@ -116,15 +108,15 @@ export const onCronTrigger = (runtime: Runtime<Config>): string => {
 		runtime.log(`Epoch ${epoch}: no sealed plan in the workflow's secrets`)
 		return "no-plan"
 	}
-	const [planEpoch, weights, trades, salt] = decodeAbiParameters(sealedParams, sealedHex)
+	const [planEpoch, weights, salt] = decodeAbiParameters(sealedParams, sealedHex)
 	if (planEpoch !== epoch) {
 		runtime.log(`Epoch ${epoch}: the sealed plan in secrets is for epoch ${planEpoch}`)
 		return "wrong-plan"
 	}
 	const commitment = keccak256(
 		encodeAbiParameters(
-			[{ type: "uint256" }, { type: "address" }, { type: "uint256" }, { type: "uint16[]" }, tradeTuple, { type: "bytes32" }],
-			[BigInt(cfg.chainId), vault, epoch, weights, trades, salt],
+			[{ type: "uint256" }, { type: "address" }, { type: "uint256" }, { type: "uint16[]" }, { type: "bytes32" }],
+			[BigInt(cfg.chainId), vault, epoch, weights, salt],
 		),
 	)
 	if (commitment !== e[0]) {
@@ -148,7 +140,7 @@ export const onCronTrigger = (runtime: Runtime<Config>): string => {
 		return "missed"
 	}
 
-	const body = encodeAbiParameters(sealedParams, [epoch, weights, trades, salt])
+	const body = encodeAbiParameters(sealedParams, [epoch, weights, salt])
 	return send(REPORT_EXECUTE, body, cfg.executeGasLimit, `Epoch ${epoch}: executed at the sealed time (+${now - executeAt}s)`)
 }
 

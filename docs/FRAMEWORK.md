@@ -9,7 +9,11 @@ as `frameworkHash`, so the rules of the game can't change silently.
   Treasuries), mXAU (gold), mSPY (US large-cap equity). Constituents are fixed per vault.
 - **Methodology class.** Long-only, fully invested, weights in basis points summing to 10,000.
   Each rebalance moves the vault from its current weights to new target weights by trading
-  through the cash leg.
+  through the cash leg (constituent 0).
+- **Trade sizing.** Trades are not committed. At the execution second the vault values its
+  holdings at the venue's prices, sells each overweight constituent into cash, then buys each
+  underweight one with cash, so it lands on the target weights at the prices of that second.
+  The sizing is a fixed formula: nobody chooses the trades.
 - **Rebalance trigger.** At most one open rebalance at a time. Each one is announced as a sealed
   commitment with a nominal date.
 - **Timing.** Each rebalance executes at one second inside the public window
@@ -23,13 +27,12 @@ as `frameworkHash`, so the rules of the game can't change silently.
   from `executeAt` to `executeAt + executionTolerance`.
 - **Honesty check.** At execution, the vault checks the revealed preimage against the commitment,
   recomputes `executeAt` from the revealed salt, and checks that post-trade weights are within
-  `weightToleranceBps` of the committed targets. A rebalance not executed by the end of its window
+  `weightToleranceBps` of the committed targets (a guard against venue slippage). A rebalance not executed by the end of its window
   plus the tolerance can be publicly flagged as defaulted.
 
 ## What's sealed until execution
 
-- The target weights.
-- The trade list (sizes and direction).
+- The target weights, and with them the direction and size of every trade.
 - The salt, and with it the exact execution second.
 
-The commitment is `keccak256(abi.encode(chainid, vault, epoch, weights, trades, salt))`.
+The commitment is `keccak256(abi.encode(chainid, vault, epoch, weights, salt))`.

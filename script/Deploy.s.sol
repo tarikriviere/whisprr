@@ -9,20 +9,61 @@ import {OracleVenue} from "../src/mocks/OracleVenue.sol";
 /// @notice Deploys the constituents, venue and vault, seeds a $1m 25/25/25/25 portfolio,
 /// and writes addresses to deployments/<chainid>.json.
 /// Jitter defaults to demo-friendly minutes; override with JITTER_BEFORE, JITTER_AFTER, TOLERANCE.
+///
+///   forge script script/Deploy.s.sol --rpc-url $MONAD_TESTNET_RPC --broadcast                       # everything
+///   forge script script/Deploy.s.sol --sig "vaultOnly()" --rpc-url $MONAD_TESTNET_RPC --broadcast   # new vault, same tokens and venue
 contract Deploy is Script {
-    function run() external {
-        uint256 pk = vm.envUint("PRIVATE_KEY");
-        address deployer = vm.addr(pk);
-        uint64 jitterBefore = uint64(vm.envOr("JITTER_BEFORE", uint256(60)));
-        uint64 jitterAfter = uint64(vm.envOr("JITTER_AFTER", uint256(120)));
-        uint64 tolerance = uint64(vm.envOr("TOLERANCE", uint256(60)));
+    function _forwarder() internal view returns (address) {
         // Chainlink forwarder trusted for CRE reports (seed + execution). Defaults to Monad testnet's simulation forwarder,
         // which `cre workflow simulate --broadcast` writes through; use the KeystoneForwarder
         // (0xF8344CFd5c43616a4366C34E3EEE75af79a74482) for a deployed workflow.
-        address chainlinkForwarder = vm.envOr(
+        return vm.envOr(
             "CHAINLINK_FORWARDER",
             block.chainid == 10143 ? 0xB9F79d863261869B234c481D1f9A7af84AeAd192 : address(0)
         );
+    }
+
+    function _newVault(address deployer, OracleVenue venue, address[] memory cs) internal returns (WhisprrVault) {
+        return new WhisprrVault(
+            deployer,
+            venue,
+            _forwarder(),
+            cs,
+            keccak256(bytes(vm.readFile("docs/FRAMEWORK.md"))),
+            uint64(vm.envOr("JITTER_BEFORE", uint256(60))),
+            uint64(vm.envOr("JITTER_AFTER", uint256(120))),
+            uint64(vm.envOr("TOLERANCE", uint256(60))),
+            50
+        );
+    }
+
+    /// @notice Deploys a fresh vault against the existing tokens and venue (deployer must own the
+    /// tokens) and seeds it with $1m at 25/25/25/25 of the venue's current prices.
+    function vaultOnly() external {
+        uint256 pk = vm.envUint("PRIVATE_KEY");
+        address deployer = vm.addr(pk);
+        string memory json = vm.readFile(string.concat("deployments/", vm.toString(block.chainid), ".json"));
+        OracleVenue venue = OracleVenue(vm.parseJsonAddress(json, ".venue"));
+        address[] memory cs = new address[](4);
+        cs[0] = vm.parseJsonAddress(json, ".mUSDC");
+        cs[1] = vm.parseJsonAddress(json, ".mTBILL");
+        cs[2] = vm.parseJsonAddress(json, ".mXAU");
+        cs[3] = vm.parseJsonAddress(json, ".mSPY");
+
+        vm.startBroadcast(pk);
+        WhisprrVault vault = _newVault(deployer, venue, cs);
+        for (uint256 i; i < cs.length; ++i) {
+            MockRWA t = MockRWA(cs[i]);
+            t.mint(address(vault), 250_000e18 * 10 ** t.decimals() / venue.priceOf(cs[i]));
+        }
+        vm.stopBroadcast();
+
+        _write(deployer, address(venue), cs, address(vault));
+    }
+
+    function run() external {
+        uint256 pk = vm.envUint("PRIVATE_KEY");
+        address deployer = vm.addr(pk);
 
         vm.startBroadcast(pk);
 
@@ -46,17 +87,7 @@ contract Deploy is Script {
         cs[1] = address(tbill);
         cs[2] = address(gold);
         cs[3] = address(spy);
-        WhisprrVault vault = new WhisprrVault(
-            deployer,
-            venue,
-            chainlinkForwarder,
-            cs,
-            keccak256(bytes(vm.readFile("docs/FRAMEWORK.md"))),
-            jitterBefore,
-            jitterAfter,
-            tolerance,
-            50
-        );
+        WhisprrVault vault = _newVault(deployer, venue, cs);
 
         usdc.mint(address(vault), 250_000e6);
         tbill.mint(address(vault), 2_500e18);
@@ -65,28 +96,32 @@ contract Deploy is Script {
 
         vm.stopBroadcast();
 
+        _write(deployer, address(venue), cs, address(vault));
+    }
+
+    function _write(address deployer, address venue, address[] memory cs, address vault) internal {
         string memory k = "deployment";
         vm.serializeAddress(k, "operator", deployer);
-        vm.serializeAddress(k, "venue", address(venue));
-        vm.serializeAddress(k, "chainlinkForwarder", chainlinkForwarder);
-        vm.serializeAddress(k, "mUSDC", address(usdc));
-        vm.serializeAddress(k, "mTBILL", address(tbill));
-        vm.serializeAddress(k, "mXAU", address(gold));
-        vm.serializeAddress(k, "mSPY", address(spy));
-        string memory json = vm.serializeAddress(k, "vault", address(vault));
+        vm.serializeAddress(k, "venue", venue);
+        vm.serializeAddress(k, "chainlinkForwarder", _forwarder());
+        vm.serializeAddress(k, "mUSDC", cs[0]);
+        vm.serializeAddress(k, "mTBILL", cs[1]);
+        vm.serializeAddress(k, "mXAU", cs[2]);
+        vm.serializeAddress(k, "mSPY", cs[3]);
+        string memory json = vm.serializeAddress(k, "vault", vault);
         vm.writeJson(json, string.concat("deployments/", vm.toString(block.chainid), ".json"));
 
         // Point the CRE workflow at the new vault.
         if (block.chainid == 10143) {
             vm.writeJson(
-                vm.toString(address(vault)), "cre/whisprr-keeper/config.staging.json", ".vaultAddress"
+                vm.toString(vault), "cre/whisprr-keeper/config.staging.json", ".vaultAddress"
             );
             vm.writeJson(
-                vm.toString(address(vault)), "cre/whisprr-keeper/config.production.json", ".vaultAddress"
+                vm.toString(vault), "cre/whisprr-keeper/config.production.json", ".vaultAddress"
             );
         }
 
-        console.log("WhisprrVault:", address(vault));
-        console.log("OracleVenue: ", address(venue));
+        console.log("WhisprrVault:", vault);
+        console.log("OracleVenue: ", venue);
     }
 }

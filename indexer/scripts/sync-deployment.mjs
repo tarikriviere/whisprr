@@ -7,8 +7,10 @@ const deployment = JSON.parse(readFileSync(`../deployments/${chain}.json`, "utf8
 const vault = deployment.vault.toLowerCase();
 
 let startBlock = 0;
-const broadcast = `../broadcast/Deploy.s.sol/${chain}/run-latest.json`;
-if (existsSync(broadcast)) {
+// A full deploy (run) or a vault-only redeploy (vaultOnly) may have created the current vault.
+for (const name of ["run", "vaultOnly"]) {
+  const broadcast = `../broadcast/Deploy.s.sol/${chain}/${name}-latest.json`;
+  if (!existsSync(broadcast)) continue;
   const run = JSON.parse(readFileSync(broadcast, "utf8"));
   const receipt = run.receipts.find((r) => r.contractAddress?.toLowerCase() === vault);
   if (receipt) startBlock = Number(BigInt(receipt.blockNumber));

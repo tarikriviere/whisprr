@@ -110,25 +110,14 @@ indexer.onEvent({ contract: "WhisprrVault", event: "TradeExecuted" }, async ({ e
   });
 });
 
-const tradeTuple = {
-  type: "tuple[]",
-  components: [
-    { name: "tokenIn", type: "uint8" },
-    { name: "tokenOut", type: "uint8" },
-    { name: "amountIn", type: "uint256" },
-    { name: "minAmountOut", type: "uint256" },
-  ],
-} as const;
-
 indexer.onEvent({ contract: "WhisprrVault", event: "Executed" }, async ({ event, context }) => {
   const p = event.params;
   const weights = p.weights.map((w) => Number(w));
-  const trades = p.trades.map((t) => ({ tokenIn: Number(t[0]), tokenOut: Number(t[1]), amountIn: t[2], minAmountOut: t[3] }));
   // Same encoding as WhisprrVault.hashRebalance: verify the reveal without trusting the contract.
   const revealHash = keccak256(
     encodeAbiParameters(
-      [{ type: "uint256" }, { type: "address" }, { type: "uint256" }, { type: "uint16[]" }, tradeTuple, { type: "bytes32" }],
-      [BigInt(event.chainId), getAddress(event.srcAddress), p.epoch, weights, trades, p.salt as Hex],
+      [{ type: "uint256" }, { type: "address" }, { type: "uint256" }, { type: "uint16[]" }, { type: "bytes32" }],
+      [BigInt(event.chainId), getAddress(event.srcAddress), p.epoch, weights, p.salt as Hex],
     ),
   );
   const verified = revealHash.toLowerCase() === p.commitment.toLowerCase();

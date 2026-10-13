@@ -2,22 +2,19 @@
 pragma solidity ^0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
-import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {WhisprrVault} from "../src/WhisprrVault.sol";
 
 /// @notice Operator tooling: commit one rebalance. The operator's role ends there; Chainlink
-/// executes it at the time its salt and the seed block imply.
+/// executes it at the time its salt and the seed block imply, and the vault sizes the trades
+/// from the prices at that second.
 ///
 ///   forge script script/Rebalance.s.sol --sig "commit()" --rpc-url $MONAD_TESTNET_RPC --broadcast
 ///
-/// commit() plans trades from the vault's live holdings to the target WEIGHTS (comma-separated
-/// bps, default 1000,4000,2000,3000), seals them with a fresh salt, and stores the sealed plan
-/// (hex of abi.encode(epoch, weights, trades, salt)) in sealed/ (gitignored). Only the hash is
-/// broadcast. Hand the sealed file to the CRE workflow with cre/whisprr-keeper/scripts/hand-over.mjs.
+/// commit() seals the target WEIGHTS (comma-separated bps, default 1000,4000,2000,3000) with a
+/// fresh salt and stores the sealed plan (hex of abi.encode(epoch, weights, salt)) in sealed/
+/// (gitignored). Only the hash is broadcast. Hand the sealed file to the CRE workflow with
+/// cre/whisprr-keeper/scripts/hand-over.mjs.
 contract Rebalance is Script {
-    uint16 constant BPS = 10_000;
-    uint8 constant CASH = 0;
-
     function _vault() internal view returns (WhisprrVault) {
         string memory json = vm.readFile(string.concat("deployments/", vm.toString(block.chainid), ".json"));
         return WhisprrVault(vm.parseJsonAddress(json, ".vault"));
@@ -39,13 +36,14 @@ contract Rebalance is Script {
             weights[i] = uint16(raw[i]);
         }
 
-        WhisprrVault.Trade[] memory trades = plan(vault, weights);
         bytes32 salt = keccak256(abi.encode(vm.randomUint(), pk, block.timestamp, block.prevrandao));
         uint256 epoch = vault.currentEpoch() + 1;
-        bytes32 commitment = _hash(vault, epoch, weights, trades, salt);
+        // Same encoding as WhisprrVault.hashRebalance, computed locally so the preimage never
+        // leaves this machine before execution.
+        bytes32 commitment = keccak256(abi.encode(block.chainid, address(vault), epoch, weights, salt));
         uint64 nominal = uint64(block.timestamp + vm.envOr("NOMINAL_DELAY", vault.jitterBefore() + 60));
 
-        vm.writeFile(_sealedPath(vault, epoch), vm.toString(abi.encode(epoch, weights, trades, salt)));
+        vm.writeFile(_sealedPath(vault, epoch), vm.toString(abi.encode(epoch, weights, salt)));
 
         vm.broadcast(pk);
         vault.commit(commitment, nominal);
@@ -54,53 +52,7 @@ contract Rebalance is Script {
         console.log("commitment");
         console.logBytes32(commitment);
         console.log("nominal   ", nominal);
-        console.log("trades    ", trades.length);
         console.log("sealed    ", _sealedPath(vault, epoch));
         console.log("next: node cre/whisprr-keeper/scripts/hand-over.mjs <sealed file>");
-    }
-
-    /// @notice Trades that move the vault to `weights`: sell every overweight leg into cash, then buy
-    /// every underweight leg from cash. Sells come first so the cash leg can fund the buys.
-    function plan(WhisprrVault vault, uint16[] memory weights)
-        public
-        view
-        returns (WhisprrVault.Trade[] memory trades)
-    {
-        address[] memory cs = vault.constituents();
-        require(weights.length == cs.length, "weights length");
-        (uint256[] memory values, uint256 total) = vault.holdingsValue();
-
-        WhisprrVault.Trade[] memory buf = new WhisprrVault.Trade[](2 * cs.length);
-        uint256 n;
-        for (uint256 pass; pass < 2; ++pass) {
-            for (uint256 i = 1; i < cs.length; ++i) {
-                uint256 target = total * weights[i] / BPS;
-                uint256 price = vault.venue().priceOf(cs[i]);
-                if (pass == 0 && values[i] > target) {
-                    uint256 amt = (values[i] - target) * 10 ** IERC20Metadata(cs[i]).decimals() / price;
-                    buf[n++] = WhisprrVault.Trade(uint8(i), CASH, amt, 0);
-                } else if (pass == 1 && values[i] < target) {
-                    uint256 amt = (target - values[i]) * 10 ** IERC20Metadata(cs[CASH]).decimals()
-                        / vault.venue().priceOf(cs[CASH]);
-                    buf[n++] = WhisprrVault.Trade(CASH, uint8(i), amt, 0);
-                }
-            }
-        }
-        trades = new WhisprrVault.Trade[](n);
-        for (uint256 i; i < n; ++i) {
-            trades[i] = buf[i];
-        }
-    }
-
-    /// @dev Same encoding as WhisprrVault.hashRebalance, computed locally so the preimage never
-    /// leaves this machine before execution.
-    function _hash(
-        WhisprrVault vault,
-        uint256 epoch,
-        uint16[] memory weights,
-        WhisprrVault.Trade[] memory trades,
-        bytes32 salt
-    ) internal view returns (bytes32) {
-        return keccak256(abi.encode(block.chainid, address(vault), epoch, weights, trades, salt));
     }
 }

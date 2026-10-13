@@ -1,4 +1,4 @@
-// Client-side mirror of the vault's commitment scheme and the operator's trade planner.
+// Client-side mirror of the vault's commitment scheme and its trade sizing.
 import { encodeAbiParameters, keccak256, toHex, type Address, type Hex } from "viem";
 
 export const BPS = 10_000n;
@@ -32,19 +32,9 @@ export type Epoch = {
   lastExecution: bigint; // windowEnd + tolerance: after this anyone can flag a default
 };
 
-export type Sealed = { chainId: number; vault: Address; epoch: bigint; weights: number[]; trades: Trade[]; salt: Hex };
+export type Sealed = { chainId: number; vault: Address; epoch: bigint; weights: number[]; salt: Hex };
 
-const tradeTuple = {
-  type: "tuple[]",
-  components: [
-    { name: "tokenIn", type: "uint8" },
-    { name: "tokenOut", type: "uint8" },
-    { name: "amountIn", type: "uint256" },
-    { name: "minAmountOut", type: "uint256" },
-  ],
-} as const;
-
-/** keccak256(abi.encode(chainid, vault, epoch, weights, trades, salt)), as WhisprrVault.hashRebalance. */
+/** keccak256(abi.encode(chainid, vault, epoch, weights, salt)), as WhisprrVault.hashRebalance. */
 export function hashRebalance(s: Omit<Sealed, "chainId"> & { chainId: number }): Hex {
   return keccak256(
     encodeAbiParameters(
@@ -53,10 +43,9 @@ export function hashRebalance(s: Omit<Sealed, "chainId"> & { chainId: number }):
         { type: "address" },
         { type: "uint256" },
         { type: "uint16[]" },
-        tradeTuple,
         { type: "bytes32" },
       ],
-      [BigInt(s.chainId), s.vault, s.epoch, s.weights, s.trades, s.salt],
+      [BigInt(s.chainId), s.vault, s.epoch, s.weights, s.salt],
     ),
   );
 }
@@ -73,7 +62,8 @@ export function randomSalt(): Hex {
   return toHex(crypto.getRandomValues(new Uint8Array(32)));
 }
 
-/** Sell overweight legs into cash, then buy underweight legs from cash (mirrors script/Rebalance.s.sol). */
+/** The trades the vault would size at today's prices (mirrors WhisprrVault._rebalanceTo). A preview only:
+ * the vault sizes the real ones at the execution second, from the prices then. */
 export function planTrades(cs: Constituent[], weights: number[]): Trade[] {
   const total = cs.reduce((a, c) => a + c.value, 0n);
   const sells: Trade[] = [];

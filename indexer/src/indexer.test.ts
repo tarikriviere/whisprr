@@ -10,6 +10,7 @@ const B = Number(config.match(/start_block: (\d+)/)![1]);
 const CHAIN = 10143;
 const SALT = `0x${"ab".repeat(32)}` as Hex;
 const weights = [1000n, 4000n, 2000n, 3000n];
+// Trades the vault sized at execution (not part of the commitment).
 const trades: [bigint, bigint, bigint, bigint][] = [
   [2n, 0n, 20n * 10n ** 18n, 0n],
   [0n, 1n, 150_000n * 10n ** 6n, 0n],
@@ -19,11 +20,9 @@ function commitmentFor(epoch: bigint, salt: Hex) {
   return keccak256(
     encodeAbiParameters(
       [
-        { type: "uint256" }, { type: "address" }, { type: "uint256" }, { type: "uint16[]" },
-        { type: "tuple[]", components: [{ type: "uint8" }, { type: "uint8" }, { type: "uint256" }, { type: "uint256" }] },
-        { type: "bytes32" },
+        { type: "uint256" }, { type: "address" }, { type: "uint256" }, { type: "uint16[]" }, { type: "bytes32" },
       ],
-      [BigInt(CHAIN), VAULT, epoch, weights.map(Number), trades.map((t) => [Number(t[0]), Number(t[1]), t[2], t[3]] as const), salt],
+      [BigInt(CHAIN), VAULT, epoch, weights.map(Number), salt],
     ),
   );
 }
@@ -63,7 +62,7 @@ function lifecycle(revealSalt: Hex, executedOffset = 0) {
     {
       contract: "WhisprrVault" as const, event: "Executed" as const,
       block: { number: B + 200, timestamp: ts }, transaction: { hash: "0xe0" },
-      params: { epoch: 1n, commitment, weights, trades, salt: revealSalt, executeAt: at },
+      params: { epoch: 1n, commitment, weights, salt: revealSalt, executeAt: at },
     },
   ];
 }

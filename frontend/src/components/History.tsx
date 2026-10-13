@@ -33,11 +33,15 @@ function EpochRow({ e, s, vault }: { e: Epoch; s: VaultState; vault: Address }) 
         address: vault, abi: vaultAbi, eventName: "Executed", args: { epoch: e.id },
         fromBlock: e.executedBlock, toBlock: e.executedBlock,
       });
-      const { weights, trades, salt } = log.args;
-      const recomputed = hashRebalance({ chainId: chain.id, vault, epoch: e.id, weights: [...weights!], trades: [...trades!], salt: salt! });
+      const trades = await client!.getContractEvents({
+        address: vault, abi: vaultAbi, eventName: "TradeExecuted", args: { epoch: e.id },
+        fromBlock: e.executedBlock, toBlock: e.executedBlock,
+      });
+      const { weights, salt } = log.args;
+      const recomputed = hashRebalance({ chainId: chain.id, vault, epoch: e.id, weights: [...weights!], salt: salt! });
       const sealedAt = executionTime(salt!, e.seedHash, e.windowStart, e.windowEnd);
       const onTime = sealedAt === log.args.executeAt && e.executedAt >= sealedAt && e.executedAt <= sealedAt + s.grace;
-      return { weights: weights!, trades: trades!, salt: salt!, recomputed, tx: log.transactionHash, sealedAt, onTime };
+      return { weights: weights!, trades, salt: salt!, recomputed, tx: log.transactionHash, sealedAt, onTime };
     },
   });
 
@@ -60,7 +64,7 @@ function EpochRow({ e, s, vault }: { e: Epoch; s: VaultState; vault: Address }) 
               <span key={i} className="mono"><span className={`dot dot-${i}`} />{s.constituents[i]?.symbol} {fmtBps(w)}</span>
             ))}
           </div>
-          <div className="mono muted">salt {short(r.salt)} · {r.trades.length} trades{url && <> · <a href={url} target="_blank" rel="noreferrer">tx</a></>}</div>
+          <div className="mono muted">salt {short(r.salt)} · {r.trades.length} trades sized at execution{url && <> · <a href={url} target="_blank" rel="noreferrer">tx</a></>}</div>
           <div className={verified ? "ok" : "warn"}>
             {verified ? "✓ keccak256(preimage) = commitment: executed exactly as sealed" : `✗ preimage hashes to ${short(r.recomputed)}`}
           </div>

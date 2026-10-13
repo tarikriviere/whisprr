@@ -24,15 +24,7 @@ if (raw.startsWith("0x")) {
 } else {
   // Frontend format: bigints serialized as "123n".
   const s = JSON.parse(raw, (_, v) => (typeof v === "string" && /^\d+n$/.test(v) ? BigInt(v.slice(0, -1)) : v));
-  hex = encodeAbiParameters(
-    [
-      { type: "uint256" },
-      { type: "uint16[]" },
-      { type: "tuple[]", components: [{ type: "uint8" }, { type: "uint8" }, { type: "uint256" }, { type: "uint256" }] },
-      { type: "bytes32" },
-    ],
-    [BigInt(s.epoch), s.weights, s.trades.map((t) => [t.tokenIn, t.tokenOut, BigInt(t.amountIn), BigInt(t.minAmountOut)]), s.salt],
-  );
+  hex = encodeAbiParameters([{ type: "uint256" }, { type: "uint16[]" }, { type: "bytes32" }], [BigInt(s.epoch), s.weights, s.salt]);
 }
 
 const envPath = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".env");

@@ -14,8 +14,9 @@ import {IReceiver} from "./IReceiver.sol";
 ///
 /// The *framework* is public from deployment: the constituent universe, a hash of the
 /// methodology document, the execution window around each nominal date, the execution
-/// tolerance and the weight tolerance. The *specifics* of each rebalance (target weights,
-/// trades, salt) are sealed behind a hash commitment, and so is its exact execution time.
+/// tolerance and the weight tolerance. The *specifics* of each rebalance (target weights and a
+/// salt) are sealed behind a hash commitment, and so is its exact execution time. Trades aren't
+/// committed: the vault sizes them itself at execution, from the venue's prices at that second.
 ///
 /// Lifecycle of an epoch:
 ///   1. commit(commitment, nominalTime): the operator seals keccak256(preimage). The preimage
@@ -30,8 +31,9 @@ import {IReceiver} from "./IReceiver.sol";
 ///      workflow as a secret; it never touches the chain. When executeAt arrives, the workflow
 ///      delivers it in a report. In one transaction the vault checks the preimage against the
 ///      commitment, recomputes executeAt from the revealed salt and requires
-///      executeAt <= now <= executeAt + executionTolerance, runs every trade, and checks the
-///      resulting weights. The market learns the time and the trades in the same transaction.
+///      executeAt <= now <= executeAt + executionTolerance, sizes and runs the trades that reach
+///      the target weights at current prices, and checks the result. The market learns the time,
+///      the weights and the trades in the same transaction.
 ///      The operator has no function to execute with: it can't choose when, or whether.
 ///   4. If nothing has executed by windowEnd + executionTolerance, anyone can markDefaulted().
 contract WhisprrVault is ReentrancyGuard, IReceiver {
@@ -43,14 +45,7 @@ contract WhisprrVault is ReentrancyGuard, IReceiver {
 
     /// @dev Report kinds delivered by the CRE workflow: report = abi.encode(uint8 kind, bytes body).
     uint8 public constant REPORT_RECORD_SEED = 1; // body = abi.encode(uint256 epoch)
-    uint8 public constant REPORT_EXECUTE = 2; // body = abi.encode(uint256 epoch, uint16[] weights, Trade[] trades, bytes32 salt)
-
-    struct Trade {
-        uint8 tokenIn; // index into constituents
-        uint8 tokenOut; // index into constituents
-        uint256 amountIn;
-        uint256 minAmountOut;
-    }
+    uint8 public constant REPORT_EXECUTE = 2; // body = abi.encode(uint256 epoch, uint16[] weights, bytes32 salt)
 
     enum Status {
         None,
@@ -83,7 +78,9 @@ contract WhisprrVault is ReentrancyGuard, IReceiver {
     uint64 public immutable jitterAfter;
     /// @notice How late after executeAt Chainlink's execution may land (covers its polling interval).
     uint64 public immutable executionTolerance;
+    /// @notice Max gap between the committed and the resulting weights: a guard against venue slippage.
     uint16 public immutable weightToleranceBps;
+    /// @dev Constituent 0 is the settlement asset: sells go into it and buys are paid from it.
     address[] internal _constituents;
 
     // ---- epoch state ----
@@ -118,7 +115,6 @@ contract WhisprrVault is ReentrancyGuard, IReceiver {
         uint256 indexed epoch,
         bytes32 indexed commitment,
         uint16[] weights,
-        Trade[] trades,
         bytes32 salt,
         uint64 executeAt
     );
@@ -138,7 +134,6 @@ contract WhisprrVault is ReentrancyGuard, IReceiver {
     error StillExecutable(uint64 deadline);
     error CommitmentMismatch(bytes32 expected, bytes32 actual);
     error BadWeights();
-    error BadTrade(uint256 index);
     error WeightOutOfTolerance(uint256 index, uint256 actualBps, uint256 targetBps);
 
     modifier onlyOperator() {
@@ -195,12 +190,8 @@ contract WhisprrVault is ReentrancyGuard, IReceiver {
 
     /// @notice The commitment for a rebalance preimage. Compute it locally before committing:
     /// calling this through a public RPC shows the preimage to that RPC's operator.
-    function hashRebalance(uint256 epoch, uint16[] memory weights, Trade[] memory trades, bytes32 salt)
-        public
-        view
-        returns (bytes32)
-    {
-        return keccak256(abi.encode(block.chainid, address(this), epoch, weights, trades, salt));
+    function hashRebalance(uint256 epoch, uint16[] memory weights, bytes32 salt) public view returns (bytes32) {
+        return keccak256(abi.encode(block.chainid, address(this), epoch, weights, salt));
     }
 
     /// @notice The execution time the salt and the recorded seed imply. Anyone can recompute it
@@ -316,21 +307,20 @@ contract WhisprrVault is ReentrancyGuard, IReceiver {
             if (epoch != currentEpoch) revert StaleReport(epoch, currentEpoch);
             recordSeed();
         } else if (kind == REPORT_EXECUTE) {
-            (uint256 epoch, uint16[] memory weights, Trade[] memory trades, bytes32 salt) =
-                abi.decode(body, (uint256, uint16[], Trade[], bytes32));
-            _execute(epoch, weights, trades, salt);
+            (uint256 epoch, uint16[] memory weights, bytes32 salt) = abi.decode(body, (uint256, uint16[], bytes32));
+            _execute(epoch, weights, salt);
         } else {
             revert UnknownReport(kind);
         }
     }
 
     /// @dev Reveal the sealed rebalance and execute it atomically, at the time its salt implies.
-    function _execute(uint256 epoch, uint16[] memory weights, Trade[] memory trades, bytes32 salt) internal {
+    function _execute(uint256 epoch, uint16[] memory weights, bytes32 salt) internal {
         if (epoch != currentEpoch) revert StaleReport(epoch, currentEpoch);
         Epoch storage e = epochs[epoch];
         if (e.status != Status.Seeded) revert WrongStatus(Status.Seeded, e.status);
 
-        bytes32 actual = hashRebalance(epoch, weights, trades, salt);
+        bytes32 actual = hashRebalance(epoch, weights, salt);
         if (actual != e.commitment) revert CommitmentMismatch(e.commitment, actual);
 
         uint64 executeAt = executionTime(epoch, salt);
@@ -345,15 +335,7 @@ contract WhisprrVault is ReentrancyGuard, IReceiver {
         }
         if (sum != BPS) revert BadWeights();
 
-        for (uint256 i; i < trades.length; ++i) {
-            Trade memory t = trades[i];
-            if (t.tokenIn >= n || t.tokenOut >= n || t.tokenIn == t.tokenOut) revert BadTrade(i);
-            address tIn = _constituents[t.tokenIn];
-            address tOut = _constituents[t.tokenOut];
-            IERC20(tIn).forceApprove(address(venue), t.amountIn);
-            uint256 out = venue.swap(tIn, tOut, t.amountIn, t.minAmountOut, address(this));
-            emit TradeExecuted(epoch, tIn, tOut, t.amountIn, out);
-        }
+        _rebalanceTo(epoch, weights);
 
         uint256[] memory w = currentWeights();
         for (uint256 i; i < n; ++i) {
@@ -365,7 +347,43 @@ contract WhisprrVault is ReentrancyGuard, IReceiver {
         e.executeAt = executeAt;
         e.executedAt = uint64(block.timestamp);
         e.executedBlock = uint64(block.number);
-        emit Executed(epoch, e.commitment, weights, trades, salt, executeAt);
+        emit Executed(epoch, e.commitment, weights, salt, executeAt);
+    }
+
+    /// @dev Sizes and runs the trades that take the vault to `weights` at the venue's prices right
+    /// now: sell each overweight constituent into the settlement asset, then buy each underweight
+    /// one with it. The trades follow from the weights and the prices; nobody chooses them.
+    function _rebalanceTo(uint256 epoch, uint16[] memory weights) internal {
+        (uint256[] memory values, uint256 total) = holdingsValue();
+        uint256 n = values.length;
+        for (uint256 i = 1; i < n; ++i) {
+            uint256 target = total * weights[i] / BPS;
+            if (values[i] > target) _swap(epoch, i, 0, _units(i, values[i] - target));
+        }
+        for (uint256 i = 1; i < n; ++i) {
+            uint256 target = total * weights[i] / BPS;
+            if (values[i] < target) {
+                uint256 amountIn = _units(0, target - values[i]);
+                uint256 cash = IERC20(_constituents[0]).balanceOf(address(this));
+                _swap(epoch, 0, i, amountIn < cash ? amountIn : cash);
+            }
+        }
+    }
+
+    /// @dev Token units of constituent `i` worth `usd` (1e18) at the venue's price, rounded down.
+    function _units(uint256 i, uint256 usd) internal view returns (uint256) {
+        address t = _constituents[i];
+        return usd * 10 ** IERC20Metadata(t).decimals() / venue.priceOf(t);
+    }
+
+    /// @dev Slippage is bounded by the weight check after all trades, not per swap.
+    function _swap(uint256 epoch, uint256 i, uint256 j, uint256 amountIn) internal {
+        if (amountIn == 0) return;
+        address tIn = _constituents[i];
+        address tOut = _constituents[j];
+        IERC20(tIn).forceApprove(address(venue), amountIn);
+        uint256 out = venue.swap(tIn, tOut, amountIn, 0, address(this));
+        emit TradeExecuted(epoch, tIn, tOut, amountIn, out);
     }
 
     /// @notice Publicly flag an epoch that wasn't executed by the end of its window plus tolerance.
