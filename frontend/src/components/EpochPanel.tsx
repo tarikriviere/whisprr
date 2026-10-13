@@ -91,7 +91,7 @@ export function EpochPanel({ s, vault, connected }: { s: VaultState; vault: Addr
         {e.status === "Executed" && (
           <div className="tl-mark tl-exec" style={{ left: `${pct(e.executeAt, e.windowStart, e.windowEnd)}%` }} title="Sealed execution second"><span>executed</span></div>
         )}
-        {open && <div className="tl-now" style={{ left: `${pct(s.now, e.windowStart, e.windowEnd)}%` }} title="Now" />}
+        {open && <div className="tl-now" style={{ left: `${pct(clock, e.windowStart, e.windowEnd)}%` }} title="Now" />}
       </div>
       <div className="tl-ends mono small muted"><span>{fmtTime(e.windowStart)}</span><span>{fmtTime(e.windowEnd)}</span></div>
       <p className="note">{note}</p>
