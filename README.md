@@ -129,7 +129,7 @@ Deploying writes `deployments/10143.json` and points the CRE workflow's config a
 |---|---|
 | Randomness workflow | [`cre/README.md`](cre/README.md): `cre workflow simulate whisprr-draw -T staging-settings --broadcast` |
 | Indexer | [`indexer/README.md`](indexer/README.md): `pnpm sync && pnpm dev` |
-| Frontend | `cd frontend && cp .env.example .env` (set `VITE_DYNAMIC_ENV_ID`) `&& npm install && npm run dev` |
+| Frontend | `cd frontend && cp .env.example .env` (set `VITE_DYNAMIC_ENV_ID`) `&& npm install && npm run dev`. In the Dynamic dashboard, enable **Monad Testnet** under Chains & Networks → EVM, or sign-in fails |
 
 A rebalance can also be driven from the command line:
 
