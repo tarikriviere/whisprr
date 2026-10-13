@@ -61,10 +61,10 @@ export function TrackRecord({ s, vault }: { s: VaultState; vault: Address }) {
       )}
       {drawn.length > 0 && (
         <>
-          <h3>Sealed execution second vs. nominal</h3>
-          <div className="strip" role="img" aria-label={`Offsets of ${drawn.length} drawn execution times, mean ${meanOffset.toFixed(0)} seconds from nominal`}>
+          <h3>Sealed execution second vs. anchor</h3>
+          <div className="strip" role="img" aria-label={`Offsets of ${drawn.length} drawn execution times, mean ${meanOffset.toFixed(0)} seconds from the anchor`}>
             <div className="strip-track" />
-            <div className="strip-zero" style={{ left: `${x(0)}%` }}><span>nominal</span></div>
+            <div className="strip-zero" style={{ left: `${x(0)}%` }}><span>anchor</span></div>
             {drawn.map((e) => (
               <div key={e.epoch} className="strip-dot" style={{ left: `${x(Number(e.offsetFromNominal))}%` }}
                 title={`#${e.epoch}: ${Number(e.offsetFromNominal) >= 0 ? "+" : ""}${e.offsetFromNominal}s${e.verified ? " · verified" : ""}${e.onSchedule ? " · on schedule" : ""}`} />
@@ -73,7 +73,7 @@ export function TrackRecord({ s, vault }: { s: VaultState; vault: Address }) {
           <div className="strip-axis mono small muted"><span>−{s.jitterBefore.toString()}s</span><span>+{s.jitterAfter.toString()}s</span></div>
           <p className="note">
             Each dot is an executed rebalance. Its second came from keccak256(salt, Monad seed), uniform over the window, so
-            offsets scatter on both sides of nominal instead of landing on a date the market could trade ahead of. Mean offset so far: {meanOffset >= 0 ? "+" : ""}{meanOffset.toFixed(0)}s.
+            offsets scatter on both sides of the anchor instead of landing on a date the market could trade ahead of. Mean offset so far: {meanOffset >= 0 ? "+" : ""}{meanOffset.toFixed(0)}s.
           </p>
         </>
       )}

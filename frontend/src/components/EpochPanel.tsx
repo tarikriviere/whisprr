@@ -77,7 +77,7 @@ export function EpochPanel({ s, vault, connected }: { s: VaultState; vault: Addr
       </div>
       <dl className="kv">
         <dt>Sealed commitment</dt><dd className="mono" title={e.commitment}>{short(e.commitment)}</dd>
-        <dt>Scheduled date</dt><dd className="mono">{fmtTime(nominal)}</dd>
+        <dt>Anchor (scheduled time)</dt><dd className="mono">{fmtTime(nominal)}</dd>
         <dt>Public window</dt><dd className="mono">{fmtTime(e.windowStart)} → {fmtTime(e.windowEnd)}</dd>
         <dt>Seed (Monad block {e.seedBlock.toString()})</dt>
         <dd className="mono" title={e.seedHash}>{/^0x0+$/.test(e.seedHash) ? "pending" : short(e.seedHash)}</dd>
@@ -87,7 +87,7 @@ export function EpochPanel({ s, vault, connected }: { s: VaultState; vault: Addr
       {open && <p className="countdown mono">{phase(clock, e.windowStart, e.windowEnd, e.lastExecution)}</p>}
       <div className="timeline" aria-label="Execution window">
         <div className="tl-track" />
-        <div className="tl-mark tl-nominal" style={{ left: `${pct(nominal, e.windowStart, e.windowEnd)}%` }} title="Nominal date"><span>nominal</span></div>
+        <div className="tl-mark tl-nominal" style={{ left: `${pct(nominal, e.windowStart, e.windowEnd)}%` }} title="Anchor: the scheduled time"><span>anchor</span></div>
         {e.status === "Executed" && (
           <div className="tl-mark tl-exec" style={{ left: `${pct(e.executeAt, e.windowStart, e.windowEnd)}%` }} title="Sealed execution second"><span>executed</span></div>
         )}
