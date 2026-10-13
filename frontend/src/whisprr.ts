@@ -3,9 +3,8 @@ import { encodeAbiParameters, keccak256, toHex, type Address, type Hex } from "v
 
 export const BPS = 10_000n;
 export const CASH = 0;
-export const STATUS = ["None", "Committed", "Drawn", "Executed", "Defaulted"] as const;
+export const STATUS = ["None", "Committed", "Seeded", "Executed", "Defaulted"] as const;
 export type Status = (typeof STATUS)[number];
-export const DRAW_SOURCE = ["–", "block hash (fallback)", "Chainlink CRE"] as const;
 
 export type Trade = { tokenIn: number; tokenOut: number; amountIn: bigint; minAmountOut: bigint };
 
@@ -21,16 +20,16 @@ export type Constituent = {
 export type Epoch = {
   id: bigint;
   commitment: Hex;
+  seedHash: Hex; // 0x0… until recorded
   committedBlock: bigint;
-  drawBlock: bigint;
+  seedBlock: bigint;
   windowStart: bigint;
   windowEnd: bigint;
-  executeAt: bigint;
+  executeAt: bigint; // 0 until revealed at execution
   executedAt: bigint;
   executedBlock: bigint;
   status: Status;
-  drawSource: (typeof DRAW_SOURCE)[number];
-  fallbackBlock: bigint; // 0 when CRE is disabled
+  lastExecution: bigint; // windowEnd + tolerance: after this anyone can flag a default
 };
 
 export type Sealed = { chainId: number; vault: Address; epoch: bigint; weights: number[]; trades: Trade[]; salt: Hex };
@@ -61,6 +60,14 @@ export function hashRebalance(s: Omit<Sealed, "chainId"> & { chainId: number }):
     ),
   );
 }
+
+/** executeAt = windowStart + keccak256(salt, seedHash) mod (window + 1), as WhisprrVault.executionTime. */
+export function executionTime(salt: Hex, seedHash: Hex, windowStart: bigint, windowEnd: bigint): bigint {
+  const seed = BigInt(keccak256(encodeAbiParameters([{ type: "bytes32" }, { type: "bytes32" }], [salt, seedHash])));
+  return windowStart + (seed % (windowEnd - windowStart + 1n));
+}
+
+export const ZERO_HASH = `0x${"0".repeat(64)}` as Hex;
 
 export function randomSalt(): Hex {
   return toHex(crypto.getRandomValues(new Uint8Array(32)));

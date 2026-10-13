@@ -8,19 +8,20 @@ import {OracleVenue} from "../src/mocks/OracleVenue.sol";
 
 /// @notice Deploys the constituents, venue and vault, seeds a $1m 25/25/25/25 portfolio,
 /// and writes addresses to deployments/<chainid>.json.
-/// Jitter/grace default to demo-friendly minutes; override with JITTER_BEFORE, JITTER_AFTER, GRACE.
+/// Jitter defaults to demo-friendly minutes; override with JITTER_BEFORE, JITTER_AFTER, TOLERANCE.
 contract Deploy is Script {
     function run() external {
         uint256 pk = vm.envUint("PRIVATE_KEY");
         address deployer = vm.addr(pk);
         uint64 jitterBefore = uint64(vm.envOr("JITTER_BEFORE", uint256(60)));
         uint64 jitterAfter = uint64(vm.envOr("JITTER_AFTER", uint256(120)));
-        uint64 grace = uint64(vm.envOr("GRACE", uint256(600)));
-        // Chainlink forwarder trusted for CRE draws. Defaults to Monad testnet's simulation forwarder,
+        uint64 tolerance = uint64(vm.envOr("TOLERANCE", uint256(60)));
+        // Chainlink forwarder trusted for CRE reports (seed + execution). Defaults to Monad testnet's simulation forwarder,
         // which `cre workflow simulate --broadcast` writes through; use the KeystoneForwarder
         // (0xF8344CFd5c43616a4366C34E3EEE75af79a74482) for a deployed workflow.
-        address drawForwarder = vm.envOr(
-            "DRAW_FORWARDER", block.chainid == 10143 ? 0xB9F79d863261869B234c481D1f9A7af84AeAd192 : address(0)
+        address chainlinkForwarder = vm.envOr(
+            "CHAINLINK_FORWARDER",
+            block.chainid == 10143 ? 0xB9F79d863261869B234c481D1f9A7af84AeAd192 : address(0)
         );
 
         vm.startBroadcast(pk);
@@ -48,12 +49,12 @@ contract Deploy is Script {
         WhisprrVault vault = new WhisprrVault(
             deployer,
             venue,
-            drawForwarder,
+            chainlinkForwarder,
             cs,
             keccak256(bytes(vm.readFile("docs/FRAMEWORK.md"))),
             jitterBefore,
             jitterAfter,
-            grace,
+            tolerance,
             50
         );
 
@@ -67,7 +68,7 @@ contract Deploy is Script {
         string memory k = "deployment";
         vm.serializeAddress(k, "operator", deployer);
         vm.serializeAddress(k, "venue", address(venue));
-        vm.serializeAddress(k, "drawForwarder", drawForwarder);
+        vm.serializeAddress(k, "chainlinkForwarder", chainlinkForwarder);
         vm.serializeAddress(k, "mUSDC", address(usdc));
         vm.serializeAddress(k, "mTBILL", address(tbill));
         vm.serializeAddress(k, "mXAU", address(gold));
@@ -77,8 +78,12 @@ contract Deploy is Script {
 
         // Point the CRE workflow at the new vault.
         if (block.chainid == 10143) {
-            vm.writeJson(vm.toString(address(vault)), "cre/whisprr-draw/config.staging.json", ".vaultAddress");
-            vm.writeJson(vm.toString(address(vault)), "cre/whisprr-draw/config.production.json", ".vaultAddress");
+            vm.writeJson(
+                vm.toString(address(vault)), "cre/whisprr-keeper/config.staging.json", ".vaultAddress"
+            );
+            vm.writeJson(
+                vm.toString(address(vault)), "cre/whisprr-keeper/config.production.json", ".vaultAddress"
+            );
         }
 
         console.log("WhisprrVault:", address(vault));

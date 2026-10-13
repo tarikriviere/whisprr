@@ -130,3 +130,4 @@ footer { margin-top: 32px; text-align: center; }
 .strip-dot { position: absolute; top: 13px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--c3); box-shadow: 0 0 0 2px var(--surface); opacity: 0.85; cursor: default; }
 .strip-dot:hover { opacity: 1; transform: scale(1.3); }
 .strip-axis { display: flex; justify-content: space-between; margin: 0 6px; }
+.cmd { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0; }

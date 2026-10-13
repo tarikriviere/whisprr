@@ -10,35 +10,40 @@ import {IPriceVenue} from "./IPriceVenue.sol";
 import {IReceiver} from "./IReceiver.sol";
 
 /// @title WhisprrVault
-/// @notice An onchain index whose rebalances can't be front-run.
+/// @notice An onchain index whose rebalances can't be front-run, and whose timing no one chooses.
 ///
 /// The *framework* is public from deployment: the constituent universe, a hash of the
-/// methodology document, the jitter window and the weight tolerance. The *specifics* of each
-/// rebalance (target weights, trades) are sealed behind a hash commitment until the moment
-/// they execute.
+/// methodology document, the execution window around each nominal date, the execution
+/// tolerance and the weight tolerance. The *specifics* of each rebalance (target weights,
+/// trades, salt) are sealed behind a hash commitment, and so is its exact execution time.
 ///
 /// Lifecycle of an epoch:
-///   1. commit(commitment, nominalTime): operator seals keccak256(preimage); the execution
-///      window [nominalTime - jitterBefore, nominalTime + jitterAfter] is fixed.
-///   2. The exact execution time inside the window is drawn after commit:
-///      - primarily by a Chainlink CRE workflow, whose random word arrives through the
-///        Chainlink forwarder (onReport) and is mixed with the draw block's hash;
-///      - or, if CRE hasn't delivered within CRE_TIMEOUT_BLOCKS, by anyone calling
-///        drawExecutionTime(), which uses the draw block's hash alone.
-///   3. execute(weights, trades, salt): operator reveals the preimage within the grace period
-///      after the drawn time. The vault checks the hash, runs every trade, and checks that the
-///      resulting portfolio matches the committed weights. Reveal and execution are one atomic
-///      transaction, so the instructions are never public before they've executed.
-///   4. If the operator misses the grace period, anyone can call markDefaulted().
+///   1. commit(commitment, nominalTime): the operator seals keccak256(preimage). The preimage
+///      includes a random salt. The window [nominal - jitterBefore, nominal + jitterAfter] is
+///      public; the exact time inside it is not.
+///   2. recordSeed(): SEED_DELAY blocks later, the hash of that block (unknown to everyone at
+///      commit) is stored onchain. Anyone can record it; the Chainlink workflow does so too.
+///      From here the execution time is fixed:
+///          executeAt = windowStart + keccak256(salt, seedHash) mod (window length + 1)
+///      but only someone who knows the salt can compute it.
+///   3. Chainlink executes. At commit the operator hands the sealed preimage to the CRE
+///      workflow as a secret; it never touches the chain. When executeAt arrives, the workflow
+///      delivers it in a report. In one transaction the vault checks the preimage against the
+///      commitment, recomputes executeAt from the revealed salt and requires
+///      executeAt <= now <= executeAt + executionTolerance, runs every trade, and checks the
+///      resulting weights. The market learns the time and the trades in the same transaction.
+///      The operator has no function to execute with: it can't choose when, or whether.
+///   4. If nothing has executed by windowEnd + executionTolerance, anyone can markDefaulted().
 contract WhisprrVault is ReentrancyGuard, IReceiver {
     using SafeERC20 for IERC20;
 
     uint16 public constant BPS = 10_000;
-    /// @dev Blocks between commit and the block whose hash seeds the execution-time draw.
-    uint64 public constant DRAW_DELAY = 5;
-    /// @dev Blocks after the draw block during which only the CRE workflow may draw (~80s on Monad).
-    /// Kept under the 256-block hash horizon so the fallback can still use the draw block's hash..
-    uint64 public constant CRE_TIMEOUT_BLOCKS = 200;
+    /// @dev Blocks between commit and the block whose hash seeds the execution time.
+    uint64 public constant SEED_DELAY = 5;
+
+    /// @dev Report kinds delivered by the CRE workflow: report = abi.encode(uint8 kind, bytes body).
+    uint8 public constant REPORT_RECORD_SEED = 1; // body = abi.encode(uint256 epoch)
+    uint8 public constant REPORT_EXECUTE = 2; // body = abi.encode(uint256 epoch, uint16[] weights, Trade[] trades, bytes32 salt)
 
     struct Trade {
         uint8 tokenIn; // index into constituents
@@ -47,42 +52,37 @@ contract WhisprrVault is ReentrancyGuard, IReceiver {
         uint256 minAmountOut;
     }
 
-    enum DrawSource {
-        None,
-        BlockHash,
-        Chainlink
-    }
-
     enum Status {
         None,
         Committed,
-        Drawn,
+        Seeded,
         Executed,
         Defaulted
     }
 
     struct Epoch {
         bytes32 commitment;
+        bytes32 seedHash;
         uint64 committedBlock;
-        uint64 drawBlock;
+        uint64 seedBlock;
         uint64 windowStart;
         uint64 windowEnd;
-        uint64 executeAt;
+        uint64 executeAt; // stored once revealed at execution
         uint64 executedAt;
         uint64 executedBlock; // lets indexers fetch the Executed event (the reveal) without a log scan
         Status status;
-        DrawSource drawSource;
     }
 
     // ---- public framework (disclosed in the clear at deployment) ----
     address public immutable operator;
     IPriceVenue public immutable venue;
-    /// @notice Chainlink forwarder allowed to deliver CRE randomness reports; zero disables CRE draws.
-    address public immutable drawForwarder;
+    /// @notice The only address that can deliver CRE reports, and so the only path to execution.
+    address public immutable chainlinkForwarder;
     bytes32 public immutable frameworkHash;
     uint64 public immutable jitterBefore;
     uint64 public immutable jitterAfter;
-    uint64 public immutable executionGrace;
+    /// @notice How late after executeAt Chainlink's execution may land (covers its polling interval).
+    uint64 public immutable executionTolerance;
     uint16 public immutable weightToleranceBps;
     address[] internal _constituents;
 
@@ -95,7 +95,7 @@ contract WhisprrVault is ReentrancyGuard, IReceiver {
         address[] constituents,
         uint64 jitterBefore,
         uint64 jitterAfter,
-        uint64 executionGrace,
+        uint64 executionTolerance,
         uint16 weightToleranceBps
     );
     event Committed(
@@ -103,10 +103,10 @@ contract WhisprrVault is ReentrancyGuard, IReceiver {
         bytes32 indexed commitment,
         uint64 windowStart,
         uint64 windowEnd,
-        uint64 drawBlock
+        uint64 seedBlock
     );
-    event ExecutionTimeDrawn(uint256 indexed epoch, uint64 executeAt, bytes32 seed, DrawSource source);
-    event DrawRearmed(uint256 indexed epoch, uint64 newDrawBlock);
+    event SeedRecorded(uint256 indexed epoch, uint64 seedBlock, bytes32 seedHash);
+    event SeedRearmed(uint256 indexed epoch, uint64 newSeedBlock);
     event TradeExecuted(
         uint256 indexed epoch,
         address indexed tokenIn,
@@ -115,19 +115,24 @@ contract WhisprrVault is ReentrancyGuard, IReceiver {
         uint256 amountOut
     );
     event Executed(
-        uint256 indexed epoch, bytes32 indexed commitment, uint16[] weights, Trade[] trades, bytes32 salt
+        uint256 indexed epoch,
+        bytes32 indexed commitment,
+        uint16[] weights,
+        Trade[] trades,
+        bytes32 salt,
+        uint64 executeAt
     );
     event Defaulted(uint256 indexed epoch);
 
     error NotOperator();
     error NotForwarder(address sender);
+    error UnknownReport(uint8 kind);
     error StaleReport(uint256 reportEpoch, uint256 currentEpoch);
-    error AwaitingChainlink(uint64 fallbackBlock);
     error BadFramework();
     error EpochOpen(uint256 epoch, Status status);
     error WrongStatus(Status expected, Status actual);
     error WindowInPast();
-    error DrawNotReady(uint64 drawBlock);
+    error SeedNotReady(uint64 seedBlock);
     error TooEarly(uint64 executeAt);
     error TooLate(uint64 deadline);
     error StillExecutable(uint64 deadline);
@@ -144,29 +149,35 @@ contract WhisprrVault is ReentrancyGuard, IReceiver {
     constructor(
         address operator_,
         IPriceVenue venue_,
-        address drawForwarder_,
+        address chainlinkForwarder_,
         address[] memory constituents_,
         bytes32 frameworkHash_,
         uint64 jitterBefore_,
         uint64 jitterAfter_,
-        uint64 executionGrace_,
+        uint64 executionTolerance_,
         uint16 weightToleranceBps_
     ) {
         if (constituents_.length < 2 || constituents_.length > type(uint8).max) {
             revert BadFramework();
         }
-        if (executionGrace_ == 0 || weightToleranceBps_ > BPS) revert BadFramework();
+        if (executionTolerance_ == 0 || weightToleranceBps_ > BPS) revert BadFramework();
+        if (chainlinkForwarder_ == address(0)) revert BadFramework();
         operator = operator_;
         venue = venue_;
-        drawForwarder = drawForwarder_;
+        chainlinkForwarder = chainlinkForwarder_;
         _constituents = constituents_;
         frameworkHash = frameworkHash_;
         jitterBefore = jitterBefore_;
         jitterAfter = jitterAfter_;
-        executionGrace = executionGrace_;
+        executionTolerance = executionTolerance_;
         weightToleranceBps = weightToleranceBps_;
         emit FrameworkPublished(
-            frameworkHash_, constituents_, jitterBefore_, jitterAfter_, executionGrace_, weightToleranceBps_
+            frameworkHash_,
+            constituents_,
+            jitterBefore_,
+            jitterAfter_,
+            executionTolerance_,
+            weightToleranceBps_
         );
     }
 
@@ -192,6 +203,33 @@ contract WhisprrVault is ReentrancyGuard, IReceiver {
         return keccak256(abi.encode(block.chainid, address(this), epoch, weights, trades, salt));
     }
 
+    /// @notice The execution time the salt and the recorded seed imply. Anyone can recompute it
+    /// once the salt is revealed; before that, only holders of the salt can.
+    function executionTime(uint256 epoch, bytes32 salt) public view returns (uint64) {
+        Epoch storage e = epochs[epoch];
+        if (e.seedHash == bytes32(0)) revert WrongStatus(Status.Seeded, e.status);
+        uint64 span = e.windowEnd - e.windowStart + 1;
+        return e.windowStart + uint64(uint256(keccak256(abi.encode(salt, e.seedHash))) % span);
+    }
+
+    /// @notice Latest moment the current epoch can still execute; after it, anyone can flag a default.
+    function lastExecutionTime(uint256 epoch) public view returns (uint64) {
+        return epochs[epoch].windowEnd + executionTolerance;
+    }
+
+    /// @notice What the CRE workflow polls: whether the seed block of the current epoch is mined
+    /// and waiting to be recorded.
+    function pendingSeed() external view returns (bool ready, uint256 epoch) {
+        epoch = currentEpoch;
+        Epoch storage e = epochs[epoch];
+        ready = e.status == Status.Committed && block.number > e.seedBlock;
+    }
+
+    /// @notice The chain's clock, so offchain executors judge "now" exactly as the vault will.
+    function chainTime() external view returns (uint64) {
+        return uint64(block.timestamp);
+    }
+
     /// @notice USD value (1e18) of each constituent held and their sum.
     function holdingsValue() public view returns (uint256[] memory values, uint256 total) {
         uint256 n = _constituents.length;
@@ -214,6 +252,10 @@ contract WhisprrVault is ReentrancyGuard, IReceiver {
         }
     }
 
+    function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
+        return interfaceId == type(IReceiver).interfaceId || interfaceId == type(IERC165).interfaceId;
+    }
+
     // ------------------------------------------------------------------
     // Lifecycle
     // ------------------------------------------------------------------
@@ -228,101 +270,72 @@ contract WhisprrVault is ReentrancyGuard, IReceiver {
         if (windowStart <= block.timestamp) revert WindowInPast();
 
         epoch = ++currentEpoch;
-        uint64 drawBlock = uint64(block.number) + DRAW_DELAY;
+        uint64 seedBlock = uint64(block.number) + SEED_DELAY;
         epochs[epoch] = Epoch({
             commitment: commitment,
+            seedHash: bytes32(0),
             committedBlock: uint64(block.number),
-            drawBlock: drawBlock,
+            seedBlock: seedBlock,
             windowStart: windowStart,
             windowEnd: nominalTime + jitterAfter,
             executeAt: 0,
             executedAt: 0,
             executedBlock: 0,
-            status: Status.Committed,
-            drawSource: DrawSource.None
+            status: Status.Committed
         });
-        emit Committed(epoch, commitment, windowStart, nominalTime + jitterAfter, drawBlock);
+        emit Committed(epoch, commitment, windowStart, nominalTime + jitterAfter, seedBlock);
     }
 
-    /// @notice Fallback draw from a block hash that didn't exist at commit time. Callable by anyone,
-    /// but when a CRE forwarder is configured only after CRE_TIMEOUT_BLOCKS without a report.
-    /// If the draw block falls out of the 256-block hash horizon, the draw is re-armed to a fresh
-    /// future block rather than accepting a predictable seed.
-    function drawExecutionTime() external returns (uint64 executeAt) {
+    /// @notice Store the seed block's hash. Callable by anyone (and by the Chainlink workflow) once
+    /// the seed block is mined. Recording it doesn't reveal the time: that needs the salt too.
+    /// If the seed block has fallen out of the 256-block hash horizon, the seed is re-armed to a
+    /// fresh future block rather than accepting a predictable value.
+    function recordSeed() public {
         uint256 epoch = currentEpoch;
         Epoch storage e = epochs[epoch];
         if (e.status != Status.Committed) revert WrongStatus(Status.Committed, e.status);
-        if (block.number <= e.drawBlock) revert DrawNotReady(e.drawBlock);
-        uint64 fallbackBlock = fallbackDrawBlock(epoch);
-        if (block.number <= fallbackBlock) revert AwaitingChainlink(fallbackBlock);
+        if (block.number <= e.seedBlock) revert SeedNotReady(e.seedBlock);
 
-        bytes32 bh = blockhash(e.drawBlock);
+        bytes32 bh = blockhash(e.seedBlock);
         if (bh == bytes32(0)) {
-            e.drawBlock = uint64(block.number) + DRAW_DELAY;
-            emit DrawRearmed(epoch, e.drawBlock);
-            return 0;
+            e.seedBlock = uint64(block.number) + SEED_DELAY;
+            emit SeedRearmed(epoch, e.seedBlock);
+            return;
         }
-        return _setExecuteAt(epoch, keccak256(abi.encode(bh, e.commitment, epoch)), DrawSource.BlockHash);
+        e.seedHash = bh;
+        e.status = Status.Seeded;
+        emit SeedRecorded(epoch, e.seedBlock, bh);
     }
 
-    /// @notice CRE report entry point: report = abi.encode(uint256 epoch, uint256 randomWord).
-    function onReport(bytes calldata, bytes calldata report) external {
-        if (drawForwarder == address(0) || msg.sender != drawForwarder) revert NotForwarder(msg.sender);
-        (uint256 epoch, uint256 randomWord) = abi.decode(report, (uint256, uint256));
+    /// @notice CRE report entry point. Only the Chainlink forwarder can call it.
+    function onReport(bytes calldata, bytes calldata report) external nonReentrant {
+        if (msg.sender != chainlinkForwarder) revert NotForwarder(msg.sender);
+        (uint8 kind, bytes memory body) = abi.decode(report, (uint8, bytes));
+        if (kind == REPORT_RECORD_SEED) {
+            uint256 epoch = abi.decode(body, (uint256));
+            if (epoch != currentEpoch) revert StaleReport(epoch, currentEpoch);
+            recordSeed();
+        } else if (kind == REPORT_EXECUTE) {
+            (uint256 epoch, uint16[] memory weights, Trade[] memory trades, bytes32 salt) =
+                abi.decode(body, (uint256, uint16[], Trade[], bytes32));
+            _execute(epoch, weights, trades, salt);
+        } else {
+            revert UnknownReport(kind);
+        }
+    }
+
+    /// @dev Reveal the sealed rebalance and execute it atomically, at the time its salt implies.
+    function _execute(uint256 epoch, uint16[] memory weights, Trade[] memory trades, bytes32 salt) internal {
         if (epoch != currentEpoch) revert StaleReport(epoch, currentEpoch);
         Epoch storage e = epochs[epoch];
-        if (e.status != Status.Committed) revert WrongStatus(Status.Committed, e.status);
-        if (block.number <= e.drawBlock) revert DrawNotReady(e.drawBlock);
-        // The block hash is mixed in when still available, so the CRE word alone doesn't decide.
-        bytes32 seed = keccak256(abi.encode(randomWord, blockhash(e.drawBlock), e.commitment, epoch));
-        _setExecuteAt(epoch, seed, DrawSource.Chainlink);
-    }
-
-    function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
-        return interfaceId == type(IReceiver).interfaceId || interfaceId == type(IERC165).interfaceId;
-    }
-
-    /// @notice Block after which the fallback draw opens (0 when CRE is disabled).
-    function fallbackDrawBlock(uint256 epoch) public view returns (uint64) {
-        if (drawForwarder == address(0)) return 0;
-        return epochs[epoch].committedBlock + DRAW_DELAY + CRE_TIMEOUT_BLOCKS;
-    }
-
-    /// @notice What the CRE workflow polls: whether the current epoch is waiting for a draw.
-    function pendingDraw() external view returns (bool ready, uint256 epoch) {
-        epoch = currentEpoch;
-        Epoch storage e = epochs[epoch];
-        ready = e.status == Status.Committed && block.number > e.drawBlock;
-    }
-
-    function _setExecuteAt(uint256 epoch, bytes32 seed, DrawSource source)
-        internal
-        returns (uint64 executeAt)
-    {
-        Epoch storage e = epochs[epoch];
-        uint64 span = e.windowEnd - e.windowStart + 1;
-        executeAt = e.windowStart + uint64(uint256(seed) % span);
-        e.executeAt = executeAt;
-        e.status = Status.Drawn;
-        e.drawSource = source;
-        emit ExecutionTimeDrawn(epoch, executeAt, seed, source);
-    }
-
-    /// @notice Reveal the sealed rebalance and execute it atomically.
-    function execute(uint16[] calldata weights, Trade[] calldata trades, bytes32 salt)
-        external
-        onlyOperator
-        nonReentrant
-    {
-        uint256 epoch = currentEpoch;
-        Epoch storage e = epochs[epoch];
-        if (e.status != Status.Drawn) revert WrongStatus(Status.Drawn, e.status);
-        if (block.timestamp < e.executeAt) revert TooEarly(e.executeAt);
-        uint64 deadline = e.executeAt + executionGrace;
-        if (block.timestamp > deadline) revert TooLate(deadline);
+        if (e.status != Status.Seeded) revert WrongStatus(Status.Seeded, e.status);
 
         bytes32 actual = hashRebalance(epoch, weights, trades, salt);
         if (actual != e.commitment) revert CommitmentMismatch(e.commitment, actual);
+
+        uint64 executeAt = executionTime(epoch, salt);
+        if (block.timestamp < executeAt) revert TooEarly(executeAt);
+        if (block.timestamp > executeAt + executionTolerance) revert TooLate(executeAt + executionTolerance);
 
         uint256 n = _constituents.length;
         if (weights.length != n) revert BadWeights();
@@ -333,7 +346,7 @@ contract WhisprrVault is ReentrancyGuard, IReceiver {
         if (sum != BPS) revert BadWeights();
 
         for (uint256 i; i < trades.length; ++i) {
-            Trade calldata t = trades[i];
+            Trade memory t = trades[i];
             if (t.tokenIn >= n || t.tokenOut >= n || t.tokenIn == t.tokenOut) revert BadTrade(i);
             address tIn = _constituents[t.tokenIn];
             address tOut = _constituents[t.tokenOut];
@@ -349,17 +362,20 @@ contract WhisprrVault is ReentrancyGuard, IReceiver {
         }
 
         e.status = Status.Executed;
+        e.executeAt = executeAt;
         e.executedAt = uint64(block.timestamp);
         e.executedBlock = uint64(block.number);
-        emit Executed(epoch, e.commitment, weights, trades, salt);
+        emit Executed(epoch, e.commitment, weights, trades, salt, executeAt);
     }
 
-    /// @notice Publicly flag an epoch whose operator failed to execute in time.
+    /// @notice Publicly flag an epoch that wasn't executed by the end of its window plus tolerance.
     function markDefaulted() external {
         uint256 epoch = currentEpoch;
         Epoch storage e = epochs[epoch];
-        if (e.status != Status.Drawn) revert WrongStatus(Status.Drawn, e.status);
-        uint64 deadline = e.executeAt + executionGrace;
+        if (e.status != Status.Committed && e.status != Status.Seeded) {
+            revert WrongStatus(Status.Seeded, e.status);
+        }
+        uint64 deadline = lastExecutionTime(epoch);
         if (block.timestamp <= deadline) revert StillExecutable(deadline);
         e.status = Status.Defaulted;
         emit Defaulted(epoch);

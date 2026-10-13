@@ -12,18 +12,24 @@ as `frameworkHash`, so the rules of the game can't change silently.
   through the cash leg.
 - **Rebalance trigger.** At most one open rebalance at a time. Each one is announced as a sealed
   commitment with a nominal date.
-- **Timing.** The exact execution time is drawn at random inside
-  `[nominal - jitterBefore, nominal + jitterAfter]` from a block hash that doesn't exist at
-  commit time.
-- **Honesty check.** At execution, the vault checks the revealed preimage against the commitment
-  and checks that post-trade weights are within `weightToleranceBps` of the committed targets.
-  An operator that misses the grace period after the drawn time can be publicly flagged as
-  defaulted.
+- **Timing.** Each rebalance executes at one second inside the public window
+  `[nominal - jitterBefore, nominal + jitterAfter]`:
+  `executeAt = windowStart + keccak256(salt, seedHash) mod (window length + 1)`, where `salt` is
+  sealed in the commitment and `seedHash` is the hash of a Monad block mined after the commit.
+  Neither input can be chosen once the other is known, so nobody picks the second, and nobody
+  without the salt can compute it before execution.
+- **Execution.** Only the Chainlink CRE workflow executes, through the Chainlink forwarder. The
+  operator has no way to execute, delay or skip a committed rebalance. Execution is valid only
+  from `executeAt` to `executeAt + executionTolerance`.
+- **Honesty check.** At execution, the vault checks the revealed preimage against the commitment,
+  recomputes `executeAt` from the revealed salt, and checks that post-trade weights are within
+  `weightToleranceBps` of the committed targets. A rebalance not executed by the end of its window
+  plus the tolerance can be publicly flagged as defaulted.
 
 ## What's sealed until execution
 
 - The target weights.
 - The trade list (sizes and direction).
-- The salt.
+- The salt, and with it the exact execution second.
 
 The commitment is `keccak256(abi.encode(chainid, vault, epoch, weights, trades, salt))`.

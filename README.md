@@ -84,7 +84,7 @@ flowchart LR
       X[OracleVenue<br/>RWA market stand-in]
       F[Chainlink forwarder]
     end
-    CRE[Chainlink CRE<br/>whisprr-draw workflow]
+    CRE[Chainlink CRE<br/>whisprr-keeper workflow]
     ENV[Envio HyperIndex<br/>Vault · Epoch · Trade]
 
     UI -- "1 commit(hash)" --> V
@@ -107,7 +107,7 @@ flowchart LR
 
 ### Sponsor integrations
 
-- **Chainlink CRE.** The `whisprr-draw` TypeScript workflow is the vault's randomness source. CRE's `Math.random()` is seeded per execution so every node agrees on the value. The vault accepts reports only from the configured forwarder, for the current epoch, once. It mixes in the draw block's hash so the DON's word alone doesn't decide the time, and opens the fallback only after a timeout, so the operator can't pick a source.
+- **Chainlink CRE.** The `whisprr-keeper` TypeScript workflow is the vault's randomness source. CRE's `Math.random()` is seeded per execution so every node agrees on the value. The vault accepts reports only from the configured forwarder, for the current epoch, once. It mixes in the draw block's hash so the DON's word alone doesn't decide the time, and opens the fallback only after a timeout, so the operator can't pick a source.
 - **Envio.** HyperIndex turns raw events into the rebalance history the product is about: how long each rebalance stayed sealed, where the drawn time landed relative to nominal, which source drew it, and whether the reveal re-hashes to the commitment. The indexer computes that last check itself rather than trusting the contract.
 - **Dynamic.** Sign-in with embedded or external wallets, used for more than login. The connected wallet's role decides what you can do: the operator gets the sealing console, while anyone signed in can trigger the fallback draw or flag a default, and everyone can verify.
 
@@ -127,7 +127,7 @@ Deploying writes `deployments/10143.json` and points the CRE workflow's config a
 
 | What | Where |
 |---|---|
-| Randomness workflow | [`cre/README.md`](cre/README.md): `cre workflow simulate whisprr-draw -T staging-settings --broadcast` |
+| Randomness workflow | [`cre/README.md`](cre/README.md): `cre workflow simulate whisprr-keeper -T staging-settings --broadcast` |
 | Indexer | [`indexer/README.md`](indexer/README.md): `pnpm sync && pnpm dev` |
 | Frontend | `cd frontend && cp .env.example .env` (set `VITE_DYNAMIC_ENV_ID`) `&& npm install && npm run dev`. In the Dynamic dashboard, enable **Monad Testnet** under Chains & Networks → EVM, or sign-in fails |
 

@@ -6,21 +6,21 @@ import { vaultAbi } from "../generated/contracts";
 import type { VaultState } from "../useVault";
 import { useTx } from "../useTx";
 import {
-  downloadSealed, fmtAmount, hashRebalance, loadSealed, parseSealed, planTrades, randomSalt, saveSealed, short,
-  type Sealed,
+  downloadSealed, executionTime, fmtAmount, fmtTime, hashRebalance, loadSealed, parseSealed, planTrades, randomSalt,
+  saveSealed, short, type Sealed,
 } from "../whisprr";
 import { TxLine } from "./TxLine";
 
 export function OperatorConsole({ s, vault }: { s: VaultState; vault: Address }) {
   const e = s.epochs[0];
-  const open = e && (e.status === "Committed" || e.status === "Drawn");
+  const open = e && (e.status === "Committed" || e.status === "Seeded");
   return (
     <section className="card operator">
       <div className="card-head">
         <h2>Operator console</h2>
         <span className="pill pill-operator">operator wallet</span>
       </div>
-      {open ? <ExecutePanel s={s} vault={vault} /> : <CommitPanel s={s} vault={vault} />}
+      {open ? <SealedPanel s={s} vault={vault} /> : <CommitPanel s={s} vault={vault} />}
     </section>
   );
 }
@@ -97,17 +97,16 @@ function CommitPanel({ s, vault }: { s: VaultState; vault: Address }) {
   );
 }
 
-function ExecutePanel({ s, vault }: { s: VaultState; vault: Address }) {
+function SealedPanel({ s, vault }: { s: VaultState; vault: Address }) {
   const e = s.epochs[0];
   const [sealed, setSealed] = useState<Sealed | null>(null);
   const [fileErr, setFileErr] = useState("");
-  const { writeContractAsync } = useWriteContract();
-  const tx = useTx();
 
   useEffect(() => setSealed(loadSealed(chain.id, vault, e.id)), [vault, e.id]);
 
   const matches = sealed ? hashRebalance(sealed) === e.commitment : false;
-  const canExecute = e.status === "Drawn" && s.now >= e.executeAt && matches;
+  const seeded = e.status === "Seeded";
+  const at = sealed && matches && seeded ? executionTime(sealed.salt, e.seedHash, e.windowStart, e.windowEnd) : undefined;
 
   async function onFile(f: File | undefined) {
     if (!f) return;
@@ -117,37 +116,41 @@ function ExecutePanel({ s, vault }: { s: VaultState; vault: Address }) {
       saveSealed(parsed);
       setFileErr("");
     } catch {
-      setFileErr("Not a Whisprr sealed-preimage file.");
+      setFileErr("Not a Whisprr sealed-plan file.");
     }
   }
 
   return (
     <>
-      <p className="muted">Rebalance #{e.id.toString()} is sealed. Executing it reveals the preimage and trades in one transaction.</p>
+      <p className="muted">
+        Rebalance #{e.id.toString()} is sealed. Your part is done: Chainlink executes it at the second its salt and the
+        seed block imply. There's no execute button, for anyone.
+      </p>
       {!sealed && (
         <label className="file">
-          No preimage for this epoch in this browser. Load the file saved at commit:
+          No sealed plan for this epoch in this browser. Load the file saved at commit to see your private view:
           <input type="file" accept="application/json" onChange={(ev) => onFile(ev.target.files?.[0])} />
         </label>
       )}
       {fileErr && <p className="warn">{fileErr}</p>}
       {sealed && (
         <p className={matches ? "ok" : "warn"}>
-          {matches ? "✓ Local preimage matches the onchain commitment" : `✗ Preimage hashes to ${short(hashRebalance(sealed))}, not the commitment`}
+          {matches ? "✓ Your sealed plan matches the onchain commitment" : `✗ Plan hashes to ${short(hashRebalance(sealed))}, not the commitment`}
         </p>
       )}
-      <div className="actions">
-        <button disabled={!canExecute || tx.status === "pending" || tx.status === "mining"}
-          onClick={() => sealed && tx.run(() => writeContractAsync({
-            address: vault, abi: vaultAbi, functionName: "execute",
-            args: [sealed.weights, sealed.trades, sealed.salt],
-          }))}>
-          Reveal &amp; execute
-        </button>
-        {e.status === "Committed" && <span className="muted">Waiting for the execution time to be drawn.</span>}
-        {e.status === "Drawn" && s.now < e.executeAt && <span className="muted">Unlocks in {(e.executeAt - s.now).toString()}s</span>}
-      </div>
-      <TxLine tx={tx} />
+      <h3>Hand the sealed plan to Chainlink</h3>
+      <pre className="cmd mono small">node cre/whisprr-keeper/scripts/hand-over.mjs whisprr-sealed-epoch-{e.id.toString()}.json{"\n"}cre/keeper.sh</pre>
+      <p className="note">
+        The plan goes to the workflow's secrets, never onchain. The keeper records the seed, then executes at the sealed
+        second.
+      </p>
+      {at !== undefined && (
+        <p className="note">
+          Your private view: executes at <span className="mono">{fmtTime(at)}</span>
+          {s.now < at ? ` (in ${at - s.now}s)` : ""}. The market can't compute this without the salt, and you can't
+          change it.
+        </p>
+      )}
     </>
   );
 }

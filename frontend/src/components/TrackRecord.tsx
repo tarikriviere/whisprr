@@ -4,16 +4,16 @@ import type { VaultState } from "../useVault";
 
 const INDEXER_URL = import.meta.env.VITE_INDEXER_URL as string | undefined;
 
-type Row = { epoch: string; offsetFromNominal: string | null; sealedSeconds: string | null; verified: boolean | null; drawSource: string | null; status: string };
+type Row = { epoch: string; offsetFromNominal: string | null; sealedSeconds: string | null; verified: boolean | null; onSchedule: boolean | null; status: string };
 type Data = {
-  Vault: { epochCount: number; executedCount: number; defaultedCount: number; verifiedCount: number; chainlinkDraws: number; fallbackDraws: number }[];
+  Vault: { epochCount: number; executedCount: number; defaultedCount: number; verifiedCount: number; onScheduleCount: number }[];
   Epoch: Row[];
 };
 
 const QUERY = `query ($vault: String!, $vaultId: String!) {
-  Vault(where: { address: { _ilike: $vault } }) { epochCount executedCount defaultedCount verifiedCount chainlinkDraws fallbackDraws }
+  Vault(where: { address: { _ilike: $vault } }) { epochCount executedCount defaultedCount verifiedCount onScheduleCount }
   Epoch(where: { vault_id: { _like: $vaultId } }, order_by: { epoch: desc }, limit: 100) {
-    epoch offsetFromNominal sealedSeconds verified drawSource status
+    epoch offsetFromNominal sealedSeconds verified onSchedule status
   }
 }`;
 
@@ -55,25 +55,25 @@ export function TrackRecord({ s, vault }: { s: VaultState; vault: Address }) {
         <div className="stats">
           <Stat label="Rebalances executed" value={`${v.executedCount}/${v.epochCount}`} />
           <Stat label="Reveals verified" value={`${v.verifiedCount}/${v.executedCount}`} good={v.verifiedCount === v.executedCount} />
-          <Stat label="Chainlink draws" value={`${v.chainlinkDraws}/${v.chainlinkDraws + v.fallbackDraws}`} />
+          <Stat label="At the sealed second" value={`${v.onScheduleCount}/${v.executedCount}`} good={v.onScheduleCount === v.executedCount} />
           <Stat label="Avg. time sealed" value={sealed.length ? `${Math.round(sealed.reduce((a, b) => a + b, 0) / sealed.length)}s` : "–"} />
         </div>
       )}
       {drawn.length > 0 && (
         <>
-          <h3>Drawn execution time vs. nominal</h3>
+          <h3>Sealed execution second vs. nominal</h3>
           <div className="strip" role="img" aria-label={`Offsets of ${drawn.length} drawn execution times, mean ${meanOffset.toFixed(0)} seconds from nominal`}>
             <div className="strip-track" />
             <div className="strip-zero" style={{ left: `${x(0)}%` }}><span>nominal</span></div>
             {drawn.map((e) => (
               <div key={e.epoch} className="strip-dot" style={{ left: `${x(Number(e.offsetFromNominal))}%` }}
-                title={`#${e.epoch}: ${Number(e.offsetFromNominal) >= 0 ? "+" : ""}${e.offsetFromNominal}s · ${e.drawSource}${e.verified ? " · verified" : ""}`} />
+                title={`#${e.epoch}: ${Number(e.offsetFromNominal) >= 0 ? "+" : ""}${e.offsetFromNominal}s${e.verified ? " · verified" : ""}${e.onSchedule ? " · on schedule" : ""}`} />
             ))}
           </div>
           <div className="strip-axis mono small muted"><span>−{s.jitterBefore.toString()}s</span><span>+{s.jitterAfter.toString()}s</span></div>
           <p className="note">
-            Each dot is a rebalance. The draw is uniform over the window, so offsets scatter on both sides of nominal instead
-            of landing on a date the market could trade ahead of. Mean offset so far: {meanOffset >= 0 ? "+" : ""}{meanOffset.toFixed(0)}s.
+            Each dot is an executed rebalance. Its second came from keccak256(salt, Monad seed), uniform over the window, so
+            offsets scatter on both sides of nominal instead of landing on a date the market could trade ahead of. Mean offset so far: {meanOffset >= 0 ? "+" : ""}{meanOffset.toFixed(0)}s.
           </p>
         </>
       )}

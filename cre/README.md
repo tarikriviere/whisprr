@@ -1,4 +1,4 @@
-# whisprr-draw: Chainlink CRE workflow
+# whisprr-keeper: Chainlink CRE workflow
 
 Draws each sealed rebalance's execution time from DON-agreed randomness.
 
@@ -18,10 +18,10 @@ The vault:
 
 ```bash
 cre login                                   # once
-cd cre/whisprr-draw && bun install && cd ..
+cd cre/whisprr-keeper && bun install && cd ..
 cp .env.example .env                        # CRE_ETH_PRIVATE_KEY: funded Monad testnet key, no 0x
 # deploying the vault on Monad testnet fills vaultAddress in config.*.json automatically
-cre workflow simulate whisprr-draw -T staging-settings --broadcast
+cre workflow simulate whisprr-keeper -T staging-settings --broadcast
 ```
 
 `simulate --broadcast` delivers the report through Monad testnet's simulation forwarder

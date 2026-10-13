@@ -6,14 +6,14 @@ type Vault {
   constituents: [String!]!
   jitterBefore: BigInt!
   jitterAfter: BigInt!
-  executionGrace: BigInt!
+  executionTolerance: BigInt!
   weightToleranceBps: Int!
   epochCount: Int!
   executedCount: Int!
   defaultedCount: Int!
   verifiedCount: Int!
-  chainlinkDraws: Int!
-  fallbackDraws: Int!
+  # executions that landed at the second keccak256(salt, seed) implies
+  onScheduleCount: Int!
 }
 
 # One row per sealed rebalance, following it from commit to reveal.
@@ -21,22 +21,22 @@ type Epoch {
   id: ID! # chainId-vault-epoch
   vault: Vault!
   epoch: BigInt!
-  status: String! # Committed | Drawn | Executed | Defaulted
+  status: String! # Committed | Seeded | Executed | Defaulted
   commitment: String!
   committedAt: BigInt!
   commitTx: String!
   windowStart: BigInt!
   windowEnd: BigInt!
   nominalTime: BigInt!
-  drawBlock: BigInt!
+  seedBlock: BigInt!
   rearms: Int!
-  # draw
-  drawSource: String # Chainlink | BlockHash
-  seed: String
+  # seed: the Monad block hash that, with the sealed salt, fixes the execution second
+  seedHash: String
+  seedTx: String
+  # revealed at execution: executeAt = windowStart + keccak256(salt, seedHash) mod (window + 1)
   executeAt: BigInt
   # executeAt - nominalTime: the randomized offset, zero-mean by construction
   offsetFromNominal: BigInt
-  drawTx: String
   # reveal + execution
   executedAt: BigInt
   executeTx: String
@@ -46,6 +46,8 @@ type Epoch {
   # keccak256(abi.encode(chainid, vault, epoch, weights, trades, salt)) recomputed by the indexer
   revealHash: String
   verified: Boolean
+  # executeAt recomputed from salt + seed by the indexer, and execution landed within tolerance of it
+  onSchedule: Boolean
   # seconds between commitment and execution: how long the weights stayed sealed
   sealedSeconds: BigInt
   trades: [Trade!]! @derivedFrom(field: "epochRef")

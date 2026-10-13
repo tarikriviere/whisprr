@@ -12,10 +12,10 @@ chains:
     address:
     - '0x4Ad9eE918aAAff5c00267af74A0590F5ED40ab2A'
     events:
-    - event: Committed(uint256 indexed epoch, bytes32 indexed commitment, uint64 windowStart, uint64 windowEnd, uint64 drawBlock)
+    - event: Committed(uint256 indexed epoch, bytes32 indexed commitment, uint64 windowStart, uint64 windowEnd, uint64 seedBlock)
     - event: Defaulted(uint256 indexed epoch)
-    - event: DrawRearmed(uint256 indexed epoch, uint64 newDrawBlock)
-    - event: Executed(uint256 indexed epoch, bytes32 indexed commitment, uint16[] weights, (uint8,uint8,uint256,uint256)[] trades, bytes32 salt)
-    - event: ExecutionTimeDrawn(uint256 indexed epoch, uint64 executeAt, bytes32 seed, uint8 source)
-    - event: FrameworkPublished(bytes32 indexed frameworkHash, address[] constituents, uint64 jitterBefore, uint64 jitterAfter, uint64 executionGrace, uint16 weightToleranceBps)
+    - event: SeedRearmed(uint256 indexed epoch, uint64 newSeedBlock)
+    - event: SeedRecorded(uint256 indexed epoch, uint64 seedBlock, bytes32 seedHash)
+    - event: Executed(uint256 indexed epoch, bytes32 indexed commitment, uint16[] weights, (uint8,uint8,uint256,uint256)[] trades, bytes32 salt, uint64 executeAt)
+    - event: FrameworkPublished(bytes32 indexed frameworkHash, address[] constituents, uint64 jitterBefore, uint64 jitterAfter, uint64 executionTolerance, uint16 weightToleranceBps)
     - event: TradeExecuted(uint256 indexed epoch, address indexed tokenIn, address indexed tokenOut, uint256 amountIn, uint256 amountOut)

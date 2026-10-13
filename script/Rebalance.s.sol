@@ -5,15 +5,15 @@ import {Script, console} from "forge-std/Script.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {WhisprrVault} from "../src/WhisprrVault.sol";
 
-/// @notice Operator tooling for one rebalance epoch.
+/// @notice Operator tooling: commit one rebalance. The operator's role ends there; Chainlink
+/// executes it at the time its salt and the seed block imply.
 ///
-///   forge script script/Rebalance.s.sol --sig "commit()"  --rpc-url $MONAD_TESTNET_RPC --broadcast
-///   forge script script/Rebalance.s.sol --sig "draw()"    --rpc-url $MONAD_TESTNET_RPC --broadcast
-///   forge script script/Rebalance.s.sol --sig "execute()" --rpc-url $MONAD_TESTNET_RPC --broadcast
+///   forge script script/Rebalance.s.sol --sig "commit()" --rpc-url $MONAD_TESTNET_RPC --broadcast
 ///
 /// commit() plans trades from the vault's live holdings to the target WEIGHTS (comma-separated
-/// bps, default 1000,4000,2000,3000), seals them with a fresh salt, and stores the preimage in
-/// sealed/ (gitignored). Only the hash is broadcast.
+/// bps, default 1000,4000,2000,3000), seals them with a fresh salt, and stores the sealed plan
+/// (hex of abi.encode(epoch, weights, trades, salt)) in sealed/ (gitignored). Only the hash is
+/// broadcast. Hand the sealed file to the CRE workflow with cre/whisprr-keeper/scripts/hand-over.mjs.
 contract Rebalance is Script {
     uint16 constant BPS = 10_000;
     uint8 constant CASH = 0;
@@ -45,7 +45,7 @@ contract Rebalance is Script {
         bytes32 commitment = _hash(vault, epoch, weights, trades, salt);
         uint64 nominal = uint64(block.timestamp + vm.envOr("NOMINAL_DELAY", vault.jitterBefore() + 60));
 
-        vm.writeFile(_sealedPath(vault, epoch), vm.toString(abi.encode(weights, trades, salt)));
+        vm.writeFile(_sealedPath(vault, epoch), vm.toString(abi.encode(epoch, weights, trades, salt)));
 
         vm.broadcast(pk);
         vault.commit(commitment, nominal);
@@ -55,24 +55,8 @@ contract Rebalance is Script {
         console.logBytes32(commitment);
         console.log("nominal   ", nominal);
         console.log("trades    ", trades.length);
-    }
-
-    function draw() external {
-        vm.broadcast(vm.envUint("PRIVATE_KEY"));
-        uint64 executeAt = _vault().drawExecutionTime();
-        console.log("executeAt ", executeAt, "(0 = draw re-armed, run again in a few blocks)");
-    }
-
-    function execute() external {
-        WhisprrVault vault = _vault();
-        uint256 epoch = vault.currentEpoch();
-        bytes memory sealedData = vm.parseBytes(vm.readFile(_sealedPath(vault, epoch)));
-        (uint16[] memory weights, WhisprrVault.Trade[] memory trades, bytes32 salt) =
-            abi.decode(sealedData, (uint16[], WhisprrVault.Trade[], bytes32));
-
-        vm.broadcast(vm.envUint("PRIVATE_KEY"));
-        vault.execute(weights, trades, salt);
-        console.log("executed epoch", epoch);
+        console.log("sealed    ", _sealedPath(vault, epoch));
+        console.log("next: node cre/whisprr-keeper/scripts/hand-over.mjs <sealed file>");
     }
 
     /// @notice Trades that move the vault to `weights`: sell every overweight leg into cash, then buy

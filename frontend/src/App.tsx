@@ -49,8 +49,8 @@ export function App() {
             {address && !isOperator && (
               <section className="card muted small">
                 Signed in{user?.email ? ` as ${user.email}` : ""} with {short(address)}. Only the operator wallet{" "}
-                {short(s.operator)} can commit or execute. Anyone can draw the execution time, flag a default, or verify a
-                reveal.
+                {short(s.operator)} can commit, and only Chainlink can execute. Anyone can record the seed, flag a default, or
+                verify a reveal.
               </section>
             )}
             <section className="card">
@@ -60,9 +60,10 @@ export function App() {
                 <dt>Operator</dt><dd className="mono"><Addr a={s.operator} /></dd>
                 <dt>Framework hash</dt><dd className="mono" title={s.frameworkHash}>{short(s.frameworkHash)}</dd>
                 <dt>Jitter window</dt><dd className="mono">−{s.jitterBefore.toString()}s / +{s.jitterAfter.toString()}s</dd>
-                <dt>Execution grace</dt><dd className="mono">{s.grace.toString()}s</dd>
+                <dt>Execution tolerance</dt><dd className="mono">{s.grace.toString()}s</dd>
                 <dt>Weight tolerance</dt><dd className="mono">{s.tolerance} bps</dd>
-                <dt>Timing randomness</dt><dd>{/^0x0+$/.test(s.drawForwarder) ? "block hash" : <>Chainlink CRE via <Addr a={s.drawForwarder} /></>}</dd>
+                <dt>Execution time</dt><dd>keccak256(salt, Monad seed) in window</dd>
+                <dt>Executor</dt><dd>Chainlink CRE via <Addr a={s.chainlinkForwarder} /></dd>
               </dl>
             </section>
           </div>

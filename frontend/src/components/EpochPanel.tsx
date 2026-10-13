@@ -23,24 +23,27 @@ export function EpochPanel({ s, vault, connected }: { s: VaultState; vault: Addr
   }
 
   const nominal = e.windowStart + s.jitterBefore;
-  const deadline = e.executeAt + s.grace;
-  const drawBlockMined = e.status === "Committed" && s.blockNumber > e.drawBlock;
-  const fallbackOpen = drawBlockMined && s.blockNumber > e.fallbackBlock;
-  const usesCre = e.fallbackBlock > 0n;
-  const defaultable = e.status === "Drawn" && s.now > deadline;
-  const drawReady = fallbackOpen;
-  const send = (fn: "drawExecutionTime" | "markDefaulted") =>
+  const seedReady = e.status === "Committed" && s.blockNumber > e.seedBlock;
+  const open = e.status === "Committed" || e.status === "Seeded";
+  const defaultable = open && s.now > e.lastExecution;
+  const send = (fn: "recordSeed" | "markDefaulted") =>
     tx.run(() => writeContractAsync({ address: vault, abi: vaultAbi, functionName: fn }));
 
   let note = "";
   if (e.status === "Committed") {
-    if (!drawBlockMined) note = `Waiting for draw block ${e.drawBlock} (now ${s.blockNumber}).`;
-    else if (usesCre && !fallbackOpen) note = `Waiting for the Chainlink CRE workflow to deliver randomness. Fallback opens at block ${e.fallbackBlock} (${e.fallbackBlock - s.blockNumber} blocks).`;
-    else note = usesCre ? "Chainlink didn't deliver in time: anyone can draw from the block hash." : "Draw block mined: anyone can draw the execution time.";
+    note = seedReady
+      ? "Seed block mined. Chainlink records its hash next (anyone can)."
+      : `Waiting for seed block ${e.seedBlock} (now ${s.blockNumber}).`;
   }
-  if (e.status === "Drawn") note = s.now < e.executeAt ? `Executes in ${e.executeAt - s.now}s. Nobody, including the operator, knew this time at commit.` : s.now <= deadline ? `Execution window open, ${deadline - s.now}s left in grace.` : "Operator missed the grace period.";
-  if (e.status === "Executed") note = "Revealed and executed atomically. Verify it below.";
-  if (e.status === "Defaulted") note = "Publicly flagged: the operator didn't execute in time.";
+  if (e.status === "Seeded") {
+    note = defaultable
+      ? "The window and tolerance have passed without execution: anyone can flag a default."
+      : "The execution second is now fixed: keccak256(salt, seed) inside the window. Only the sealed plan's holders can compute it. Chainlink executes at that second; the operator can't.";
+  }
+  if (e.status === "Executed") {
+    note = `Chainlink executed at the sealed second (+${e.executedAt - e.executeAt}s). The time and the trades became public in the same transaction.`;
+  }
+  if (e.status === "Defaulted") note = "Publicly flagged: not executed by the end of its window.";
 
   return (
     <section className="card">
@@ -50,22 +53,24 @@ export function EpochPanel({ s, vault, connected }: { s: VaultState; vault: Addr
       </div>
       <dl className="kv">
         <dt>Sealed commitment</dt><dd className="mono" title={e.commitment}>{short(e.commitment)}</dd>
-        <dt>Window</dt><dd className="mono">{fmtTime(e.windowStart)} → {fmtTime(e.windowEnd)}</dd>
-        <dt>Drawn execution time</dt><dd className="mono">{fmtTime(e.executeAt)}</dd>
-        <dt>Randomness</dt><dd>{e.status === "Committed" ? (usesCre ? "Chainlink CRE (pending)" : "block hash") : e.drawSource}</dd>
+        <dt>Public window</dt><dd className="mono">{fmtTime(e.windowStart)} → {fmtTime(e.windowEnd)}</dd>
+        <dt>Seed (Monad block {e.seedBlock.toString()})</dt>
+        <dd className="mono" title={e.seedHash}>{/^0x0+$/.test(e.seedHash) ? "pending" : short(e.seedHash)}</dd>
+        <dt>Execution second</dt>
+        <dd className="mono">{e.status === "Executed" ? fmtTime(e.executeAt) : "sealed"}</dd>
       </dl>
       <div className="timeline" aria-label="Execution window">
         <div className="tl-track" />
         <div className="tl-mark tl-nominal" style={{ left: `${pct(nominal, e.windowStart, e.windowEnd)}%` }} title="Nominal date"><span>nominal</span></div>
-        {e.executeAt > 0n && (
-          <div className="tl-mark tl-exec" style={{ left: `${pct(e.executeAt, e.windowStart, e.windowEnd)}%` }} title="Drawn execution time"><span>drawn</span></div>
+        {e.status === "Executed" && (
+          <div className="tl-mark tl-exec" style={{ left: `${pct(e.executeAt, e.windowStart, e.windowEnd)}%` }} title="Sealed execution second"><span>executed</span></div>
         )}
-        <div className="tl-now" style={{ left: `${pct(s.now, e.windowStart, e.windowEnd)}%` }} title="Now" />
+        {open && <div className="tl-now" style={{ left: `${pct(s.now, e.windowStart, e.windowEnd)}%` }} title="Now" />}
       </div>
       <p className="note">{note}</p>
-      {connected && (drawReady || defaultable) && (
+      {connected && (seedReady || defaultable) && (
         <div className="actions">
-          {drawReady && <button onClick={() => send("drawExecutionTime")}>{usesCre ? "Fallback draw" : "Draw execution time"}</button>}
+          {seedReady && <button onClick={() => send("recordSeed")}>Record seed</button>}
           {defaultable && <button className="danger" onClick={() => send("markDefaulted")}>Flag as defaulted</button>}
         </div>
       )}
