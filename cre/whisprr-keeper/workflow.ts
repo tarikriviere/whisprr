@@ -99,7 +99,8 @@ export const onCronTrigger = (runtime: Runtime<Config>): string => {
 			runtime.log(`Epoch ${epoch}: waiting for seed block ${e[3]}`)
 			return "waiting-seed"
 		}
-		return send(REPORT_RECORD_SEED, encodeAbiParameters([{ type: "uint256" }], [epoch]), cfg.seedGasLimit, `Epoch ${epoch}: seed recorded`)
+		// recordSeed re-arms instead of recording if the seed block fell out of the 256-block hash horizon.
+		return send(REPORT_RECORD_SEED, encodeAbiParameters([{ type: "uint256" }], [epoch]), cfg.seedGasLimit, `Epoch ${epoch}: seed report delivered`)
 	}
 
 	if (status !== "Seeded") {
