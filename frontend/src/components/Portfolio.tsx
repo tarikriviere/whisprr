@@ -1,5 +1,5 @@
 import type { VaultState } from "../useVault";
-import { fmtAmount, fmtBps, fmtUsd } from "../whisprr";
+import { fmtAmount, fmtBps, fmtPrice, fmtUsd } from "../whisprr";
 
 export function Portfolio({ s }: { s: VaultState }) {
   return (
@@ -17,7 +17,7 @@ export function Portfolio({ s }: { s: VaultState }) {
             <tr key={c.address}>
               <td><span className={`dot dot-${i}`} />{c.symbol}</td>
               <td className="num mono">{fmtAmount(c.balance, c.decimals)}</td>
-              <td className="num mono">{fmtUsd(c.price)}</td>
+              <td className="num mono">{fmtPrice(c.price)}</td>
               <td className="num mono">{fmtUsd(c.value)}</td>
               <td className="weight">
                 <div className="bar"><div className={`fill fill-${i}`} style={{ width: `${Number(s.weights[i]) / 100}%` }} /></div>

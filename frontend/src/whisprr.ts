@@ -131,6 +131,8 @@ export function downloadSealed(s: Sealed) {
 
 export const fmtUsd = (v: bigint) =>
   "$" + Number(v / 10n ** 16n / 100n).toLocaleString("en-US", { maximumFractionDigits: 0 });
+export const fmtPrice = (v: bigint) =>
+  "$" + (Number(v / 10n ** 14n) / 1e4).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 export const fmtBps = (bps: bigint | number) => (Number(bps) / 100).toFixed(2) + "%";
 export const fmtAmount = (v: bigint, decimals: number) =>
   (Number(v) / 10 ** decimals).toLocaleString("en-US", { maximumFractionDigits: 4 });

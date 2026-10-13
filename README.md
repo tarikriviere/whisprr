@@ -140,6 +140,7 @@ Deploying writes `deployments/10143.json` and points the keeper workflow's confi
 |---|---|
 | Keeper workflow | [`cre/README.md`](cre/README.md): `cre login`, then `WATCH_DIR=<browser downloads> cre/keeper.sh` |
 | Indexer | [`indexer/README.md`](indexer/README.md): `pnpm sync && pnpm dev` |
+| Price feed | Move the venue to `PRICE_FEED_KEY` in `.env` (`cast send <venue> "transferOwnership(address)" <its address>`), then `script/price-feed.sh` |
 | Frontend | `cd frontend && cp .env.example .env` (set `VITE_DYNAMIC_ENV_ID`) `&& npm install && npm run dev`, open `http://localhost:5173`. In the Dynamic dashboard, enable **Monad Testnet** under Chains & Networks → EVM, or sign-in fails |
 
 A rebalance can also be committed from the command line:
@@ -157,7 +158,7 @@ cre/keeper.sh                                                                   
 - **The keeper runs in simulation on testnet.** Deploying a workflow to Chainlink's network needs deploy access we don't have yet, so `cre/keeper.sh` triggers the workflow every 15 s from a local machine instead of Chainlink's own schedule, and reports go through Monad testnet's *simulation* forwarder, which doesn't verify DON signatures. Even so, a forged report would still need the sealed plan, and would still only execute at the sealed second. Production: a deployed workflow, the **KeystoneForwarder** (`CHAINLINK_FORWARDER=0xF8344CFd5c43616a4366C34E3EEE75af79a74482`), and a check of the report's workflow ID in `onReport`.
 - **The operator knows the salt**, so once the seed is recorded it could compute the second. It still can't change it, execute, or delay it. Removing that knowledge is on the roadmap.
 - **Seed re-arm.** If nobody records the seed within 256 blocks (~100 s), it re-arms to a fresh block. With the keeper running, the seed is recorded within one polling interval.
-- **Prices** come from an owner-set venue standing in for an RWA market. Pyth feeds would mark constituents to market.
+- **Prices** come from an owner-set venue standing in for an RWA market. On testnet, `script/price-feed.sh` moves them with a mean-reverting random walk (mSPY and mXAU every 30 s, a slow accrual for mTBILL, mUSDC at $1), signed by a dedicated price-feed key that owns the venue. Pyth feeds would mark constituents to market.
 - **Trades are planned at commit.** If prices move a lot before execution, the committed trades can miss the target weights by more than the tolerance and execution reverts. The rebalance then defaults rather than executing something other than what was committed.
 
 ## Roadmap
