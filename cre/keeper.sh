@@ -10,8 +10,8 @@ cd "$(dirname "$0")"
 CRE=${CRE:-$HOME/.cre/bin/cre}
 WATCH_DIR=${WATCH_DIR:-}
 POLL=${POLL:-15}            # seconds between runs when nothing is imminent
-RUN_TIMEOUT=${RUN_TIMEOUT:-15}
-LEAD=${LEAD:-5}
+RUN_TIMEOUT=${RUN_TIMEOUT:-45}  # a simulator run takes ~20 s
+LEAD=${LEAD:-15}
 last=""
 while true; do
   if [ -n "$WATCH_DIR" ]; then

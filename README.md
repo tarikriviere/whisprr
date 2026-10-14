@@ -22,7 +22,7 @@ Whisprr keeps **the framework public** and **the actionable detail sealed**:
 
 Each rebalance goes through four steps:
 
-1. **Commit (operator).** Each rebalance has an **anchor**: a scheduled time fixed at deployment (`scheduleStart + k × rebalancePeriod`; on testnet, every 5 minutes on the clock's 5-minute marks). The operator posts `keccak256(abi.encode(chainid, vault, epoch, weights, salt))`, which seals the **next scheduled** rebalance; it must land at least `commitLead` before that anchor's public window `[anchor − jitterBefore, anchor + jitterAfter]` opens (on testnet, 30 s before to 45 s after). An anchor without a commitment passes, publicly. The plan includes a random **salt**. The operator hands the sealed plan to the Chainlink CRE keeper workflow as a secret; it never touches the chain. **The operator's role ends here.**
+1. **Commit (operator).** Each rebalance has an **anchor**: a scheduled time fixed at deployment (`scheduleStart + k × rebalancePeriod`; on the live testnet vault, daily at 16:00 ET, the market-close fixing). The operator posts `keccak256(abi.encode(chainid, vault, epoch, weights, salt))`, which seals the **next scheduled** rebalance; it must land at least `commitLead` before that anchor's public window `[anchor − jitterBefore, anchor + jitterAfter]` opens (on testnet, 30 s before to 45 s after). An anchor without a commitment passes, publicly. The plan includes a random **salt**. The operator hands the sealed plan to the Chainlink CRE keeper workflow as a secret; it never touches the chain. **The operator's role ends here.**
 2. **Seed (Monad).** Five blocks later, that block's hash is recorded onchain (by the keeper, or by anyone). From that moment the execution second is fixed:
 
    `executeAt = windowStart + keccak256(salt, seedHash) mod (window length + 1)`
@@ -45,14 +45,27 @@ Randomizing the date means filling at a slightly different price than the anchor
 
 ## Live on Monad testnet
 
+**Live app: [whisprr-xi.vercel.app](https://whisprr-xi.vercel.app)** (no wallet needed to watch).
+
+The live vault rebalances **daily at 16:00 ET** (window 15:59:30 to 16:00:45 ET), during the judging period from Oct 14. Each day the index committee seals that day's weights before 15:55 ET, and the Chainlink CRE keeper executes them at the sealed second. The app shows the schedule, the countdown to the next anchor, holdings at moving prices, and every past rebalance with its hash and timing re-verified in your browser. Prices tick hourly.
+
 Contracts and transactions are live on Monad testnet. The Chainlink CRE keeper workflow runs in **Chainlink's CRE simulator** on a local machine (deploying to Chainlink's network needs deploy access, which is pending), and every seed and execution it produces is a real Monad testnet transaction through Chainlink's forwarder.
 
 | Contract | Address |
 |---|---|
-| `WhisprrVault` | [`0xcdFD19F994648E31894131e444449E820F022134`](https://testnet.monadexplorer.com/address/0xcdFD19F994648E31894131e444449E820F022134) (rebalances every 5 min, window −30 s / +45 s) |
+| `WhisprrVault` (live) | [`0x792e5B66A8D31a22A1c826186D8aF7A70e547aA3`](https://testnet.monadexplorer.com/address/0x792e5B66A8D31a22A1c826186D8aF7A70e547aA3) (daily at 16:00 ET, window −30 s / +45 s, commit by 15:55 ET) |
+| `WhisprrVault` (demo, in the video) | [`0xcdFD19F994648E31894131e444449E820F022134`](https://testnet.monadexplorer.com/address/0xcdFD19F994648E31894131e444449E820F022134) (every 5 min, window −30 s / +45 s) |
 | `OracleVenue` | [`0xb8E8C1C7B0431b6D69Dd20444E763ab1B1D1F051`](https://testnet.monadexplorer.com/address/0xb8E8C1C7B0431b6D69Dd20444E763ab1B1D1F051) |
 | mUSDC · mTBILL · mXAU · mSPY | [`0x5028…0dc5`](https://testnet.monadexplorer.com/address/0x502822f4238e792330Da841c192E194629B80dc5) · [`0x1B71…e608`](https://testnet.monadexplorer.com/address/0x1B71434Ae7e942568461D84eC6Ab065CE75ee608) · [`0x1A10…0F24`](https://testnet.monadexplorer.com/address/0x1A1093E67796c63745b447b8B138cBfB46BC0F24) · [`0xdF20…1989`](https://testnet.monadexplorer.com/address/0xdF2010a3c071236D50904AbD0c9a8DEA7b181989) |
 | Chainlink forwarder (Monad testnet, simulation) | [`0xB9F79d863261869B234c481D1f9A7af84AeAd192`](https://testnet.monadexplorer.com/address/0xB9F79d863261869B234c481D1f9A7af84AeAd192) |
+
+On the demo vault (`0xcdFD…2134`, the one in the video), **rebalance #4** was sealed by the committee (target 5 / 40 / 5 / 50) and executed by the Chainlink keeper 8 s after the sealed second, inside the 60 s tolerance, while the price feed kept moving the market. Rebalance #2 shows **Defaulted**: the keeper missed its window and the next commit flagged it publicly.
+
+| Step | Who | Transaction |
+|---|---|---|
+| 1. Commit: only the hash of the weights and salt goes onchain | Index committee | [`0x96c5a0bd…ed1ae6c8`](https://testnet.monadexplorer.com/tx/0x96c5a0bd94a59641c8fe2425b80ff56ddbfdb46886df021856e95e69ed1ae6c8) |
+| 2. Seed: Monad block hash recorded; the second is now fixed but sealed | Chainlink keeper | [`0xea23b88a…47bf011d`](https://testnet.monadexplorer.com/tx/0xea23b88af0916e7a6f185a4b1b11119cd279241f8eab559ae07e75c347bf011d) |
+| 3. Reveal, size the trades at current prices and execute at the sealed second | Chainlink keeper | [`0xbb0f6449…17dec513`](https://testnet.monadexplorer.com/tx/0xbb0f6449481e4bcf44c51e3b35afbae42833648f2fa04c733913704317dec513) |
 
 On the previous vault ([`0x5a4F…fa57`](https://testnet.monadexplorer.com/address/0x5a4F4A97fDB6Aeb5f86ffEA11C1502EAD736fa57)), which had no fixed schedule (the operator picked each anchor), **rebalance #1** was executed by the Chainlink keeper (25/25/25/25 → 10/40/20/30) while the price feed moved the market: mSPY $502.09 → $506.08 and mXAU $2,481.28 → $2,467.86 between commit and execution. The vault sized the trades at the execution second and landed on **10.00 / 39.99 / 20.00 / 29.99%**.
 
@@ -160,7 +173,7 @@ cre/keeper.sh                                                                   
 - **The keeper runs in simulation on testnet.** Deploying a workflow to Chainlink's network needs deploy access we don't have yet, so the workflow runs in Chainlink's CRE simulator: `cre/keeper.sh` triggers it every 15 s from a local machine (and right at the sealed second, with a per-run timeout and immediate retry if the CLI stalls) instead of Chainlink's own schedule, and reports go through Monad testnet's *simulation* forwarder, which doesn't verify DON signatures. Even so, a forged report would still need the sealed plan, and would still only execute at the sealed second. Production: a deployed workflow, the **KeystoneForwarder** (`CHAINLINK_FORWARDER=0xF8344CFd5c43616a4366C34E3EEE75af79a74482`), and a check of the report's workflow ID in `onReport`.
 - **The operator knows the salt**, so once the seed is recorded it could compute the second. It still can't change it, execute, or delay it. Removing that knowledge is on the roadmap.
 - **Seed re-arm.** If nobody records the seed within 256 blocks (~100 s), it re-arms to a fresh block. With the keeper running, the seed is recorded within one polling interval.
-- **Prices** come from an owner-set venue standing in for an RWA market. On testnet, `script/price-feed.sh` moves them with a mean-reverting random walk (mSPY and mXAU every 30 s, a slow accrual for mTBILL, mUSDC at $1), signed by a dedicated price-feed key that owns the venue. Pyth feeds would mark constituents to market.
+- **Prices** come from an owner-set venue standing in for an RWA market. On testnet, `script/price-feed.sh` moves them with a mean-reverting random walk (mSPY and mXAU on each tick: every 10 s in the demo video, hourly on the live vault to save gas; a slow accrual for mTBILL; mUSDC at $1), signed by a dedicated price-feed key that owns the venue. Pyth feeds would mark constituents to market.
 - **Trades are sized from spot prices at the execution second.** Real indices freeze share multipliers at a fixing before the rebalance; sizing at execution is the onchain approximation. The weight tolerance now only guards against venue slippage; with a real venue, per-trade `minAmountOut` from an oracle would tighten it.
 
 ## Roadmap

@@ -49,7 +49,7 @@ export function App() {
                 <dd className="mono" title={s.frameworkHash}>
                   <a href="https://github.com/tarikriviere/whisprr/blob/main/docs/FRAMEWORK.md" target="_blank" rel="noreferrer">{short(s.frameworkHash)}</a>
                 </dd>
-                <dt>Schedule</dt><dd className="mono">every {fmtDuration(s.rebalancePeriod)} from {fmtTime(s.scheduleStart)}</dd>
+                <dt>Schedule</dt><dd className="mono">{s.rebalancePeriod === 86400n ? "daily" : `every ${fmtDuration(s.rebalancePeriod)}`} from {fmtTime(s.scheduleStart)}</dd>
                 <dt>Commit deadline</dt><dd className="mono">{s.commitLead.toString()}s before the window</dd>
                 <dt>Jitter window</dt><dd className="mono">−{s.jitterBefore.toString()}s / +{s.jitterAfter.toString()}s</dd>
                 <dt>Execution tolerance</dt><dd className="mono">{s.grace.toString()}s</dd>

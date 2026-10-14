@@ -73,7 +73,10 @@ export function nextSlot(
 /** "2:05" for a number of seconds. */
 export const fmtDuration = (s: bigint) => {
   const n = Number(s < 0n ? 0n : s);
-  return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, "0")}`;
+  const pad = (x: number) => String(x).padStart(2, "0");
+  if (n >= 86400) return `${Math.floor(n / 86400)}d ${Math.floor((n % 86400) / 3600)}h`;
+  if (n >= 3600) return `${Math.floor(n / 3600)}:${pad(Math.floor((n % 3600) / 60))}:${pad(n % 60)}`;
+  return `${Math.floor(n / 60)}:${pad(n % 60)}`;
 };
 
 export const ZERO_HASH = `0x${"0".repeat(64)}` as Hex;
@@ -147,4 +150,12 @@ export const fmtBps = (bps: bigint | number) => (Number(bps) / 100).toFixed(2) +
 export const fmtAmount = (v: bigint, decimals: number) =>
   (Number(v) / 10 ** decimals).toLocaleString("en-US", { maximumFractionDigits: 4 });
 export const short = (h: string) => `${h.slice(0, 6)}…${h.slice(-4)}`;
-export const fmtTime = (t: bigint) => (t === 0n ? "–" : new Date(Number(t) * 1000).toLocaleTimeString());
+/** Time of day, prefixed with the date when it isn't today (daily schedules span days). */
+export const fmtTime = (t: bigint) => {
+  if (t === 0n) return "–";
+  const d = new Date(Number(t) * 1000);
+  const time = d.toLocaleTimeString();
+  return d.toDateString() === new Date().toDateString()
+    ? time
+    : `${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })}, ${time}`;
+};
