@@ -185,9 +185,12 @@ cre/keeper.sh                                                                   
 
 ## AI tools disclosure
 
-This project was built with AI coding assistance, as required by the hackathon rules:
+**Claude Code** (Anthropic's CLI agent, model Claude Opus 5.5) assisted with several parts of this project: writing and testing the Solidity contracts, the deploy scripts, the Chainlink CRE workflow, the Envio indexer, the React/Dynamic frontend and the documentation. **Claude** (claude.ai) was used for early design discussion.
 
-- **Claude Code** (Anthropic CLI agent, model: Claude Opus 5.5): scaffolding, Solidity contracts, tests, deploy scripts, the Chainlink CRE workflow, the Envio indexer, the React/Dynamic frontend and documentation, under the author's direction and review.
-- **Claude** (claude.ai): design discussion and the build plan.
+The financial insight, the product vision and the key design decisions are the author's. These include:
+- sealing rebalances to remove front-running drag;
+- taking timing discretion away from the operator;
+- committing only to target weights and sizing trades at execution;
+- a rebalance schedule fixed in advance, with a public window around each anchor.
 
-All code was written during the hackathon window.
+All AI-generated code was directed and reviewed by the author, and all of it was written during the hackathon window.
